@@ -1,0 +1,24 @@
+Category,Item,Tons,Cost
+Hull,Standard Hull,1000,80
+Hull,Hull Configuration,0,5
+Hull,Armor (TL 13),10,4
+Drive,Maneuver Drive-4,41,84
+Drive,Jump Drive-2,50,75
+Power,Power Plant-4,43,86
+Fuel,Jump Fuel (2 parsecs),200,0
+Fuel,Power Plant Fuel (4 weeks),10,0
+Bridge,Bridge,20,5
+Bridge,Computer/20,0,5
+Computer,Software/Jump Control/2,0,0.2
+Computer,Software/Maneuver/0,0,0
+Computer,Software/Library,0,0
+Sensors,Basic Military Sensors,2,1
+Crew,Staterooms x10,40,5
+Crew,Emergency Low Berths x10,10,10
+Cargo,Cargo Hold,550,0
+Weapons,Triple Turret (Beam Lasers),1,4
+Weapons,Triple Turret (Sandcasters),1,0.75
+Weapons,Ammunition (50 canisters),2,0.05
+Systems,Fuel Scoops,0,1
+Systems,Fuel Processor (40 tons/day),2,0.1
+Total,Total,1000,366.1

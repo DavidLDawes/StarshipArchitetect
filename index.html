@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Starship Architect - Design and layout starship floors for Traveller RPG">
+    <title>Starship Architect</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <h1>🚀 Starship Architect</h1>
+            <p class="tagline">Traveller Ship Design & Layout Tool</p>
+        </header>
+
+        <!-- File Upload Section -->
+        <section id="upload-section" class="card">
+            <h2>📁 Import Ship Design</h2>
+            <p>Select a .csv file with columns: Category, Item, Tons, Cost</p>
+            <div class="file-upload-container">
+                <input type="file" id="csv-input" accept=".csv" />
+                <label for="csv-input" class="file-upload-btn">
+                    <span class="icon">📄</span>
+                    <span>Choose CSV File</span>
+                </label>
+                <span id="file-name" class="file-name">No file selected</span>
+            </div>
+        </section>
+
+        <!-- Ship Stats Section (hidden until CSV loaded) -->
+        <section id="stats-section" class="card hidden">
+            <h2>📊 Ship Statistics</h2>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <span class="stat-label">Total Tonnage</span>
+                    <span id="total-tons" class="stat-value">0</span>
+                    <span class="stat-unit">tons</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Total Floor Area</span>
+                    <span id="total-sqm" class="stat-value">0</span>
+                    <span class="stat-unit">m²</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Total Cost</span>
+                    <span id="total-cost" class="stat-value">0</span>
+                    <span class="stat-unit">MCr</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Floor Configuration Section (hidden until CSV loaded) -->
+        <section id="floor-config-section" class="card hidden">
+            <h2>🏗️ Floor Configuration</h2>
+
+            <div class="config-row">
+                <label for="floor-slider">Number of Floors:</label>
+                <input type="range" id="floor-slider" min="1" max="20" value="4" />
+                <span id="floor-count" class="slider-value">4</span>
+            </div>
+
+            <div class="config-row">
+                <label for="floor-dimensions">Floor Dimensions:</label>
+                <select id="floor-dimensions" class="dimension-select">
+                    <!-- Options populated dynamically -->
+                </select>
+            </div>
+
+            <div class="config-row">
+                <label for="floor-length">Floor Length (m):</label>
+                <input type="number" id="floor-length" min="5" step="0.1" />
+                <span id="calculated-width" class="calculated-value">Width: <span id="floor-width">0</span> m</span>
+            </div>
+
+            <div class="config-row">
+                <label for="ceiling-height">Ceiling Height (m):</label>
+                <input type="number" id="ceiling-height" min="2" max="5" step="0.1" value="2.5" />
+            </div>
+
+            <div class="info-box">
+                <span id="sqm-per-floor">0</span> m² per floor
+            </div>
+        </section>
+
+        <!-- Floor Display Section (hidden until CSV loaded) -->
+        <section id="floor-display-section" class="card hidden">
+            <h2>📐 Floor Layout</h2>
+            <div id="floor-list" class="floor-list">
+                <!-- Floors will be dynamically generated here -->
+            </div>
+        </section>
+
+        <!-- Components Section (hidden until CSV loaded) -->
+        <section id="components-section" class="card hidden">
+            <h2>🔧 Ship Components</h2>
+            <div id="components-list" class="components-list">
+                <!-- Components from CSV will be listed here -->
+            </div>
+        </section>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
