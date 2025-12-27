@@ -89,6 +89,7 @@
         <!-- Floor Display Section (hidden until CSV loaded) -->
         <section id="floor-display-section" class="card hidden">
             <h2>📐 Floor Layout</h2>
+            <p class="section-hint">Click on a component below to configure its dimensions and place it on a floor.</p>
             <div id="floor-list" class="floor-list">
                 <!-- Floors will be dynamically generated here -->
             </div>
@@ -97,12 +98,64 @@
         <!-- Components Section (hidden until CSV loaded) -->
         <section id="components-section" class="card hidden">
             <h2>🔧 Ship Components</h2>
+            <p class="section-hint">Click a component to set its dimensions and place it on the floor plan.</p>
             <div id="components-list" class="components-list">
                 <!-- Components from CSV will be listed here -->
             </div>
         </section>
     </div>
 
+    <!-- Component Dimension Modal -->
+    <div id="component-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-component-name">Component Name</h3>
+                <button id="modal-close-btn" class="modal-close-btn">&times;</button>
+            </div>
+            
+            <div id="modal-component-stats" class="modal-stats">
+                <!-- Stats populated dynamically -->
+            </div>
+            
+            <div class="modal-body">
+                <div class="modal-row">
+                    <label for="component-dimensions">Dimensions:</label>
+                    <select id="component-dimensions" class="dimension-select">
+                        <!-- Options populated dynamically -->
+                    </select>
+                </div>
+                
+                <div class="modal-row">
+                    <label for="component-floor-select">Place on Floor:</label>
+                    <select id="component-floor-select" class="dimension-select">
+                        <!-- Options populated dynamically -->
+                    </select>
+                </div>
+                
+                <!-- Multi-floor section for large components -->
+                <div id="multi-floor-section" class="multi-floor-section hidden">
+                    <p class="multi-floor-notice">
+                        ⚠️ This component requires <strong id="floors-needed">2</strong> floors.
+                        Select which floors to span:
+                    </p>
+                    <div id="floor-checkboxes" class="floor-checkboxes">
+                        <!-- Checkboxes populated dynamically -->
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <button id="modal-cancel-btn" class="btn btn-secondary">Cancel</button>
+                <button id="modal-place-btn" class="btn btn-primary">Place Component</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts - order matters for dependencies -->
+    <script src="csv-parser.js"></script>
+    <script src="floor-utils.js"></script>
+    <script src="canvas-renderer.js"></script>
+    <script src="component-modal.js"></script>
     <script src="app.js"></script>
 </body>
 

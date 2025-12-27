@@ -18,7 +18,16 @@ let shipData = {
     components: [],
     numFloors: 4,
     floorLength: 30,
-    ceilingHeight: DEFAULT_CEILING_HEIGHT
+    ceilingHeight: DEFAULT_CEILING_HEIGHT,
+    componentPlacements: {} // { componentIndex: { length, width, floors: [{floor, x, y}] } }
+};
+
+let uiState = {
+    selectedComponent: null,
+    isPlacingComponent: false,
+    placementData: null,
+    placementHistory: [], // Stack of placements for undo
+    redoHistory: []       // Stack of undone placements for redo
 };
 
 // ========================================
@@ -48,241 +57,6 @@ const elements = {
     componentsSection: document.getElementById('components-section'),
     componentsList: document.getElementById('components-list')
 };
-
-// ========================================
-// CSV Parsing
-// ========================================
-
-/**
- * Parse CSV content into ship components
- * @param {string} csvContent - Raw CSV content
- * @returns {object} Parsed ship data with components and totals
- */
-function parseCSV(csvContent) {
-    const lines = csvContent.trim().split(/\r?\n/);
-    if (lines.length < 2) {
-        throw new Error('CSV must have at least a header row and one data row');
-    }
-
-    // Skip header row
-    const dataLines = lines.slice(1);
-    const components = [];
-    let currentCategory = '';
-    let totalTons = 0;
-    let totalCost = 0;
-
-    for (const line of dataLines) {
-        // Parse CSV line (handles quoted fields)
-        const fields = parseCSVLine(line);
-        if (fields.length < 4) continue;
-
-        let [category, item, tons, cost] = fields;
-
-        // Clean up values
-        category = category.trim();
-        item = item.trim();
-        tons = parseFloat(tons.replace(/[^0-9.-]/g, '')) || 0;
-        cost = parseFloat(cost.replace(/[^0-9.-]/g, '')) || 0;
-
-        // Handle category inheritance
-        if (category) {
-            currentCategory = category;
-        } else {
-            category = currentCategory;
-        }
-
-        // Check if this is the total line
-        if (category.toLowerCase() === 'total') {
-            totalTons = tons;
-            totalCost = cost;
-        } else {
-            components.push({
-                category: category,
-                item: item,
-                tons: tons,
-                cost: cost
-            });
-        }
-    }
-
-    return {
-        components,
-        totalTons,
-        totalCost
-    };
-}
-
-/**
- * Parse a single CSV line handling quoted fields
- * @param {string} line - CSV line
- * @returns {string[]} Array of field values
- */
-function parseCSVLine(line) {
-    const fields = [];
-    let current = '';
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-        const char = line[i];
-
-        if (char === '"') {
-            inQuotes = !inQuotes;
-        } else if (char === ',' && !inQuotes) {
-            fields.push(current);
-            current = '';
-        } else {
-            current += char;
-        }
-    }
-    fields.push(current);
-
-    return fields;
-}
-
-// ========================================
-// Floor Calculations
-// ========================================
-
-/**
- * Calculate total floor area from tonnage
- * Floor area = (total tons) * 14 / ceiling height
- * @param {number} tons - Total ship tonnage
- * @param {number} ceilingHeight - Ceiling height in meters
- * @returns {number} Total floor area in square meters
- */
-function calculateTotalFloorArea(tons, ceilingHeight) {
-    return (tons * SQM_PER_TON) / ceilingHeight;
-}
-
-/**
- * Calculate floor area per floor
- * @param {number} totalArea - Total floor area
- * @param {number} numFloors - Number of floors
- * @returns {number} Square meters per floor
- */
-function calculateFloorArea(totalArea, numFloors) {
-    return totalArea / numFloors;
-}
-
-/**
- * Calculate default floor length based on area
- * Uses nearest multiple of 10 below the square root, minimum 5
- * @param {number} floorArea - Floor area in square meters
- * @returns {number} Suggested floor length
- */
-function calculateDefaultFloorLength(floorArea) {
-    const sqRoot = Math.sqrt(floorArea);
-    let length = Math.floor(sqRoot / 10) * 10;
-    if (length < 5) length = 5;
-    return length;
-}
-
-/**
- * Calculate floor width from area and length
- * @param {number} floorArea - Floor area in square meters
- * @param {number} length - Floor length in meters
- * @returns {number} Floor width in meters
- */
-function calculateFloorWidth(floorArea, length) {
-    return floorArea / length;
-}
-
-/**
- * Generate dimension options for the dropdown
- * Creates pairs of length × width in pertinent multiples (10m for small ships, 100m for large)
- * @param {number} floorArea - Floor area in square meters
- * @returns {Array} Array of {length, width, label} objects
- */
-function generateDimensionOptions(floorArea) {
-    const options = [];
-
-    // Determine the step size based on ship size
-    // For very large ships (area > 10000 m²), use 100m increments
-    // For medium ships (area > 1000 m²), use 50m increments
-    // For smaller ships, use 10m increments
-    let step;
-    if (floorArea > 50000) {
-        step = 100;
-    } else if (floorArea > 10000) {
-        step = 50;
-    } else if (floorArea > 2500) {
-        step = 20;
-    } else {
-        step = 10;
-    }
-
-    // Calculate the range of sensible lengths
-    // Length should be reasonable - not too narrow or too wide
-    const sqRoot = Math.sqrt(floorArea);
-
-    // Find minimum length (at least step, and width shouldn't be more than 3x length)
-    const minLength = Math.max(step, Math.ceil((Math.sqrt(floorArea / 3)) / step) * step);
-
-    // Find maximum length (width shouldn't be less than 1/3 of length)
-    const maxLength = Math.floor((Math.sqrt(floorArea * 3)) / step) * step;
-
-    // Generate options from min to max length
-    for (let length = minLength; length <= maxLength; length += step) {
-        const width = floorArea / length;
-
-        // Only include reasonable width ratios (between 1:3 and 3:1)
-        const ratio = length / width;
-        if (ratio >= 0.33 && ratio <= 3) {
-            options.push({
-                length: length,
-                width: width,
-                label: `${length} × ${width.toFixed(1)} m`
-            });
-        }
-    }
-
-    // Ensure we have between 3 and 12 options
-    // If too few, try smaller step
-    if (options.length < 3 && step > 5) {
-        return generateDimensionOptionsWithStep(floorArea, step / 2);
-    }
-
-    // If too many, thin out by taking every Nth
-    if (options.length > 12) {
-        const thinFactor = Math.ceil(options.length / 12);
-        const thinned = [];
-        for (let i = 0; i < options.length; i += thinFactor) {
-            thinned.push(options[i]);
-        }
-        // Always include the last option for the full range
-        if (thinned[thinned.length - 1] !== options[options.length - 1]) {
-            thinned.push(options[options.length - 1]);
-        }
-        return thinned;
-    }
-
-    return options;
-}
-
-/**
- * Helper to generate options with a specific step size
- */
-function generateDimensionOptionsWithStep(floorArea, step) {
-    const options = [];
-    step = Math.max(5, step); // Minimum 5m step
-
-    const minLength = Math.max(step, Math.ceil((Math.sqrt(floorArea / 3)) / step) * step);
-    const maxLength = Math.floor((Math.sqrt(floorArea * 3)) / step) * step;
-
-    for (let length = minLength; length <= maxLength; length += step) {
-        const width = floorArea / length;
-        const ratio = length / width;
-        if (ratio >= 0.33 && ratio <= 3) {
-            options.push({
-                length: length,
-                width: width,
-                label: `${length} × ${width.toFixed(1)} m`
-            });
-        }
-    }
-
-    return options;
-}
 
 // ========================================
 // UI Updates
@@ -357,7 +131,6 @@ function updateDimensionDropdown(floorArea) {
     // Select the closest matching option
     if (options.length > 0) {
         elements.floorDimensions.selectedIndex = closestIndex;
-        // Update floor length to match selected option if different
         if (shipData.floorLength !== options[closestIndex].length) {
             shipData.floorLength = options[closestIndex].length;
             elements.floorLength.value = shipData.floorLength;
@@ -368,7 +141,7 @@ function updateDimensionDropdown(floorArea) {
 }
 
 /**
- * Render floor list
+ * Render floor list with canvas visualizations
  */
 function renderFloors() {
     const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
@@ -380,36 +153,123 @@ function renderFloors() {
     for (let i = 1; i <= shipData.numFloors; i++) {
         const floorItem = document.createElement('div');
         floorItem.className = 'floor-item';
-        floorItem.innerHTML = `
+
+        // Create floor info section
+        const floorInfo = document.createElement('div');
+        floorInfo.className = 'floor-info';
+        floorInfo.innerHTML = `
             <div class="floor-number">${i}</div>
             <div class="floor-details">
                 <div class="floor-name">Floor ${i}</div>
                 <div class="floor-dimensions">${shipData.floorLength} × ${width.toFixed(1)} meters, ${shipData.ceilingHeight} meters tall</div>
             </div>
         `;
+        floorItem.appendChild(floorInfo);
+
+        // Create canvas container and canvas with correct proportions
+        const canvasContainer = document.createElement('div');
+        canvasContainer.className = 'floor-canvas-container';
+
+        const canvas = document.createElement('canvas');
+        canvas.className = 'floor-canvas';
+        canvas.id = `floor-canvas-${i}`;
+
+        // Calculate canvas dimensions maintaining aspect ratio
+        const aspectRatio = width / shipData.floorLength;
+
+        canvas.style.width = '100%';
+        canvas.style.aspectRatio = `${shipData.floorLength} / ${width}`;
+
+        // Set actual canvas resolution for drawing
+        canvas.width = 800;
+        canvas.height = Math.round(800 * aspectRatio);
+
+        // Add click handler for placement
+        const floorIndex = i;
+        canvas.addEventListener('click', (e) => handleCanvasPlacement(e, floorIndex));
+
+        canvasContainer.appendChild(canvas);
+        floorItem.appendChild(canvasContainer);
+
         elements.floorList.appendChild(floorItem);
+
+        // Draw floor with any placed components
+        drawFloorWithComponents(canvas, i, shipData.floorLength, width);
     }
 }
 
 /**
- * Render components list
+ * Render components list with click handlers
  */
 function renderComponents() {
     elements.componentsList.innerHTML = '';
 
-    for (const component of shipData.components) {
+    shipData.components.forEach((component, index) => {
+        // Count how many of this component are placed
+        const placement = shipData.componentPlacements[index];
+        const placedCount = placement && placement.floors ? placement.floors.length : 0;
+        const totalQuantity = component.quantity || 1;
+        const remainingCount = totalQuantity - placedCount;
+        const isFullyPlaced = placedCount >= totalQuantity;
+
+        // Skip fully placed single-item components
+        if (isFullyPlaced && totalQuantity === 1) {
+            return; // Don't render this component
+        }
+
         const compItem = document.createElement('div');
         compItem.className = 'component-item';
+
+        // Check if any are placed
+        if (placedCount > 0) {
+            compItem.classList.add('placed');
+        }
+
+        // Mark as fully placed if all are done
+        if (isFullyPlaced) {
+            compItem.classList.add('fully-placed');
+        }
+
+        // Check if component has zero tons (software, etc.)
+        const hasArea = component.tons > 0;
+        if (!hasArea) {
+            compItem.classList.add('no-area');
+        }
+
+        // Build placement info text
+        let placementInfo = '';
+        if (placedCount > 0) {
+            if (totalQuantity > 1) {
+                placementInfo = `<div class="component-placement-info">📍 Placed ${placedCount} of ${totalQuantity}</div>`;
+            } else {
+                const floors = placement.floors.map(f => f.floor).join(', ');
+                placementInfo = `<div class="component-placement-info">📍 Placed on Floor${placement.floors.length > 1 ? 's' : ''} ${floors}</div>`;
+            }
+        } else if (totalQuantity > 1) {
+            placementInfo = `<div class="component-quantity-info">📦 ${totalQuantity} to place</div>`;
+        }
+
         compItem.innerHTML = `
             <div class="component-category">${component.category}</div>
             <div class="component-name">${component.item}</div>
             <div class="component-stats">
-                <span>📦 ${component.tons} tons</span>
+                <span>📦 ${component.tons} tons${totalQuantity > 1 ? ` (${component.tonsPerItem} each)` : ''}</span>
                 <span>💰 ${component.cost.toLocaleString()} MCr</span>
             </div>
+            ${placementInfo}
         `;
+
+        // Add click handler for components with area that aren't fully placed
+        if (hasArea && !isFullyPlaced) {
+            compItem.addEventListener('click', () => openComponentModal(index));
+            compItem.style.cursor = 'pointer';
+        } else if (isFullyPlaced) {
+            compItem.style.opacity = '0.6';
+            compItem.style.cursor = 'default';
+        }
+
         elements.componentsList.appendChild(compItem);
-    }
+    });
 }
 
 /**
@@ -444,6 +304,7 @@ elements.csvInput.addEventListener('change', function (event) {
             shipData.totalTons = parsed.totalTons;
             shipData.totalCost = parsed.totalCost;
             shipData.components = parsed.components;
+            shipData.componentPlacements = {}; // Reset placements
 
             // Calculate default floor length
             const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
@@ -472,6 +333,9 @@ elements.floorSlider.addEventListener('input', function (event) {
     const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
     shipData.floorLength = calculateDefaultFloorLength(floorArea);
 
+    // Clear placements when floor count changes
+    shipData.componentPlacements = {};
+
     refreshUI();
 });
 
@@ -482,6 +346,8 @@ elements.floorLength.addEventListener('input', function (event) {
     const value = parseFloat(event.target.value);
     if (value >= 5) {
         shipData.floorLength = value;
+        // Clear placements when dimensions change
+        shipData.componentPlacements = {};
         refreshUI();
     }
 });
@@ -493,6 +359,8 @@ elements.ceilingHeight.addEventListener('input', function (event) {
     const value = parseFloat(event.target.value);
     if (value >= 2 && value <= 10) {
         shipData.ceilingHeight = value;
+        // Clear placements when dimensions change
+        shipData.componentPlacements = {};
         refreshUI();
     }
 });
@@ -512,11 +380,18 @@ elements.floorDimensions.addEventListener('change', function (event) {
         const width = calculateFloorWidth(floorArea, selectedLength);
         elements.floorWidth.textContent = width.toFixed(1);
 
+        // Clear placements when dimensions change
+        shipData.componentPlacements = {};
+
         renderFloors();
+        renderComponents();
     }
 });
 
 // ========================================
 // Initialization
 // ========================================
-console.log('🚀 Starship Architect initialized');
+document.addEventListener('DOMContentLoaded', function () {
+    setupComponentModalEvents();
+    console.log('🚀 Starship Architect initialized');
+});
