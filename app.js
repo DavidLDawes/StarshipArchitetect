@@ -27,7 +27,8 @@ let uiState = {
     isPlacingComponent: false,
     placementData: null,
     placementHistory: [], // Stack of placements for undo
-    redoHistory: []       // Stack of undone placements for redo
+    redoHistory: [],      // Stack of undone placements for redo
+    selectedPlacement: null // { componentIndex, floorIndex, placementIndex } - currently selected for moving
 };
 
 // ========================================

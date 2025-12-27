@@ -819,3 +819,12 @@ body {
         transform: translateX(-50%) translateY(0);
     }
 }
+
+/* ========================================
+   Selection Mode
+   ======================================== */
+
+.floor-canvas.selection-mode {
+    cursor: move;
+    box-shadow: 0 0 20px var(--color-accent-primary);
+}

@@ -335,10 +335,20 @@ function showPlacementInstructionsMulti(floors, itemName, remaining, total) {
 }
 
 /**
- * Handle canvas click during placement
+ * Handle canvas click during placement or selection
  */
 function handleCanvasPlacement(event, floorIndex) {
-    if (!uiState.isPlacingComponent) return;
+    // If we're moving a selected component
+    if (uiState.selectedPlacement) {
+        handleComponentMove(event, floorIndex);
+        return;
+    }
+
+    // If not in placement mode, try to select a component
+    if (!uiState.isPlacingComponent) {
+        handleComponentSelection(event, floorIndex);
+        return;
+    }
 
     const data = uiState.placementData;
     if (!data.floors.includes(floorIndex)) return;
@@ -658,9 +668,11 @@ function setupComponentModalEvents() {
 
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
-        // Escape to cancel placement or close modal
+        // Escape to cancel selection, placement, or close modal
         if (e.key === 'Escape') {
-            if (uiState.isPlacingComponent) {
+            if (uiState.selectedPlacement) {
+                cancelSelection();
+            } else if (uiState.isPlacingComponent) {
                 cancelPlacement();
             } else {
                 closeComponentModal();
@@ -823,4 +835,208 @@ function redoLastPlacement() {
     // Show feedback
     const component = shipData.components[componentIndex];
     console.log(`Redid placement of "${component.item}" on Floor ${floor}`);
+}
+
+/**
+ * Handle clicking on the canvas to select a component
+ */
+function handleComponentSelection(event, floorIndex) {
+    const canvas = event.target;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    // Calculate click position in meters
+    const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
+    const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
+    const floorWidth = calculateFloorWidth(floorArea, shipData.floorLength);
+    const floorLength = shipData.floorLength;
+    const pixelsPerMeter = canvas.width / floorLength;
+
+    const clickPxX = (event.clientX - rect.left) * scaleX;
+    const clickPxY = (event.clientY - rect.top) * scaleY;
+    const clickX = clickPxX / pixelsPerMeter;
+    const clickY = clickPxY / pixelsPerMeter;
+
+    // Find component at click position
+    for (const [compIdxStr, placement] of Object.entries(shipData.componentPlacements)) {
+        const compIdx = parseInt(compIdxStr);
+        if (!placement.floors) continue;
+
+        for (let i = 0; i < placement.floors.length; i++) {
+            const pos = placement.floors[i];
+            if (pos.floor !== floorIndex) continue;
+
+            // Check if click is inside this component
+            if (clickX >= pos.x && clickX <= pos.x + placement.length &&
+                clickY >= pos.y && clickY <= pos.y + placement.width) {
+
+                // Select this component
+                uiState.selectedPlacement = {
+                    componentIndex: compIdx,
+                    floorIndex: floorIndex,
+                    placementIndex: i,
+                    length: placement.length,
+                    width: placement.width,
+                    originalX: pos.x,
+                    originalY: pos.y
+                };
+
+                // Add visual feedback
+                canvas.classList.add('selection-mode');
+
+                // Redraw with selection highlight
+                drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth);
+                drawSelectionHighlight(canvas, pos.x, pos.y, placement.length, placement.width, pixelsPerMeter);
+
+                // Show instructions
+                showSelectionInstructions();
+
+                console.log(`Selected ${shipData.components[compIdx].item} at (${pos.x}, ${pos.y})`);
+                return;
+            }
+        }
+    }
+}
+
+/**
+ * Handle moving a selected component to a new position
+ */
+function handleComponentMove(event, floorIndex) {
+    const sel = uiState.selectedPlacement;
+    if (!sel) return;
+
+    const canvas = event.target;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    // Calculate click position
+    const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
+    const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
+    const floorWidth = calculateFloorWidth(floorArea, shipData.floorLength);
+    const floorLength = shipData.floorLength;
+    const pixelsPerMeter = canvas.width / floorLength;
+
+    const clickPxX = (event.clientX - rect.left) * scaleX;
+    const clickPxY = (event.clientY - rect.top) * scaleY;
+    let clickX = clickPxX / pixelsPerMeter;
+    let clickY = clickPxY / pixelsPerMeter;
+
+    // Center component on click
+    let newX = clickX - sel.length / 2;
+    let newY = clickY - sel.width / 2;
+
+    // Clamp to floor bounds
+    newX = Math.max(0, Math.min(newX, floorLength - sel.length));
+    newY = Math.max(0, Math.min(newY, floorWidth - sel.width));
+
+    // Round to nearest meter
+    newX = Math.round(newX);
+    newY = Math.round(newY);
+
+    // Remove the old placement temporarily to check overlap
+    const placement = shipData.componentPlacements[sel.componentIndex];
+    const oldPlacement = placement.floors[sel.placementIndex];
+    placement.floors.splice(sel.placementIndex, 1);
+
+    // Check for overlap at new position
+    const hasOverlap = checkOverlap(floorIndex, newX, newY, sel.length, sel.width, -1);
+
+    if (hasOverlap) {
+        // Restore old position and show error
+        placement.floors.splice(sel.placementIndex, 0, oldPlacement);
+        canvas.style.boxShadow = '0 0 20px red';
+        setTimeout(() => {
+            canvas.style.boxShadow = '';
+        }, 300);
+        return;
+    }
+
+    // Add at new position
+    placement.floors.push({
+        floor: floorIndex,
+        x: newX,
+        y: newY
+    });
+
+    // Clear selection
+    uiState.selectedPlacement = null;
+    canvas.classList.remove('selection-mode');
+    hideSelectionInstructions();
+
+    // Redraw affected floors
+    const oldCanvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
+    if (oldCanvas && sel.floorIndex !== floorIndex) {
+        drawFloorWithComponents(oldCanvas, sel.floorIndex, floorLength, floorWidth);
+    }
+    drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth);
+
+    console.log(`Moved component to (${newX}, ${newY}) on Floor ${floorIndex}`);
+}
+
+/**
+ * Draw selection highlight on a component
+ */
+function drawSelectionHighlight(canvas, x, y, length, width, pixelsPerMeter) {
+    const ctx = canvas.getContext('2d');
+    const px = x * pixelsPerMeter;
+    const py = y * pixelsPerMeter;
+    const pw = length * pixelsPerMeter;
+    const ph = width * pixelsPerMeter;
+
+    // Draw dashed selection border
+    ctx.strokeStyle = '#00ff00';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([8, 4]);
+    ctx.strokeRect(px - 2, py - 2, pw + 4, ph + 4);
+    ctx.setLineDash([]);
+}
+
+/**
+ * Show selection mode instructions
+ */
+function showSelectionInstructions() {
+    let instructions = document.getElementById('placement-instructions');
+    if (!instructions) {
+        instructions = document.createElement('div');
+        instructions.id = 'placement-instructions';
+        instructions.className = 'placement-instructions';
+        document.body.appendChild(instructions);
+    }
+    instructions.textContent = 'Click on a floor to move the selected component. Press Escape to cancel.';
+    instructions.classList.remove('hidden');
+}
+
+/**
+ * Hide selection instructions
+ */
+function hideSelectionInstructions() {
+    const instructions = document.getElementById('placement-instructions');
+    if (instructions) {
+        instructions.classList.add('hidden');
+    }
+}
+
+/**
+ * Cancel component selection
+ */
+function cancelSelection() {
+    if (!uiState.selectedPlacement) return;
+
+    const sel = uiState.selectedPlacement;
+    uiState.selectedPlacement = null;
+
+    // Remove visual feedback and redraw
+    const canvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
+    if (canvas) {
+        canvas.classList.remove('selection-mode');
+        const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
+        const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
+        const floorWidth = calculateFloorWidth(floorArea, shipData.floorLength);
+        drawFloorWithComponents(canvas, sel.floorIndex, shipData.floorLength, floorWidth);
+    }
+
+    hideSelectionInstructions();
+    console.log('Selection cancelled');
 }
