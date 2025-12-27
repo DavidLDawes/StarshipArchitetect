@@ -235,13 +235,9 @@ function startPlacement() {
     const componentIndex = parseInt(modal.dataset.componentIndex);
     const dimSelect = document.getElementById('component-dimensions');
     const dimValue = dimSelect.value;
-    console.log('Dimension dropdown value:', dimValue);
-
     const parts = dimValue.split(',');
     const length = parseFloat(parts[0]);
     const width = parseFloat(parts[1]);
-
-    console.log('Parsed dimensions:', { length, width });
 
     if (isNaN(length) || isNaN(width) || length <= 0 || width <= 0) {
         alert('Invalid dimensions selected. Please select valid dimensions.');
@@ -273,8 +269,6 @@ function startPlacement() {
         floors: selectedFloors,
         currentFloorIndex: 0
     };
-
-    console.log('Placement data set:', uiState.placementData);
 
     // Close modal and enable canvas clicks
     closeComponentModal();
@@ -377,6 +371,8 @@ function handleCanvasPlacement(event, floorIndex) {
     const compLength = data.length;  // X dimension
     const compWidth = data.width;    // Y dimension
 
+    console.log('Placing component with dimensions:', { compLength, compWidth, dataLength: data.length, dataWidth: data.width });
+
     // Calculate initial position (center component on click)
     let x = clickX - compLength / 2;
     let y = clickY - compWidth / 2;
@@ -427,11 +423,9 @@ function handleCanvasPlacement(event, floorIndex) {
     x = position.x;
     y = position.y;
 
-    // Store placement
+    // Store placement with individual dimensions
     if (!shipData.componentPlacements[data.componentIndex]) {
         shipData.componentPlacements[data.componentIndex] = {
-            length: compLength,
-            width: compWidth,
             floors: []
         };
     }
@@ -439,7 +433,9 @@ function handleCanvasPlacement(event, floorIndex) {
     shipData.componentPlacements[data.componentIndex].floors.push({
         floor: floorIndex,
         x: x,
-        y: y
+        y: y,
+        length: compLength,
+        width: compWidth
     });
 
     // Record in history for undo
@@ -512,11 +508,15 @@ function checkOverlap(floorIndex, x, y, length, width, excludeComponentIndex = -
         for (const pos of placement.floors) {
             if (pos.floor !== floorIndex) continue;
 
+            // Use per-placement dimensions (fallback to component-level)
+            const pLength = pos.length || placement.length;
+            const pWidth = pos.width || placement.width;
+
             // Check rectangle overlap
             const overlap = !(x + length <= pos.x ||
-                pos.x + placement.length <= x ||
+                pos.x + pLength <= x ||
                 y + width <= pos.y ||
-                pos.y + placement.width <= y);
+                pos.y + pWidth <= y);
 
             if (overlap) return true;
         }
@@ -543,11 +543,14 @@ function findValidPosition(floorIndex, origX, origY, compLength, compWidth, floo
 
         for (const pos of placement.floors) {
             if (pos.floor === floorIndex) {
+                // Use per-placement dimensions
+                const pLength = pos.length || placement.length;
+                const pWidth = pos.width || placement.width;
                 overlappingComponents.push({
                     x: pos.x,
                     y: pos.y,
-                    length: placement.length,
-                    width: placement.width
+                    length: pLength,
+                    width: pWidth
                 });
             }
         }
@@ -690,6 +693,20 @@ function setupComponentModalEvents() {
         if (e.ctrlKey && e.key === 'z') {
             e.preventDefault(); // Prevent browser's default undo
             undoLastPlacement();
+            return;
+        }
+
+        // Delete or Backspace to delete selected component
+        if ((e.key === 'Delete' || e.key === 'Backspace') && uiState.selectedPlacement) {
+            e.preventDefault();
+            deleteSelectedComponent();
+            return;
+        }
+
+        // R to rotate right, L to rotate left (both swap dimensions for rectangles)
+        if ((e.key === 'r' || e.key === 'R' || e.key === 'l' || e.key === 'L') && uiState.selectedPlacement) {
+            e.preventDefault();
+            rotateSelectedComponent();
         }
     });
 
@@ -867,17 +884,21 @@ function handleComponentSelection(event, floorIndex) {
             const pos = placement.floors[i];
             if (pos.floor !== floorIndex) continue;
 
+            // Use per-placement dimensions (fallback to component-level)
+            const pLength = pos.length || placement.length;
+            const pWidth = pos.width || placement.width;
+
             // Check if click is inside this component
-            if (clickX >= pos.x && clickX <= pos.x + placement.length &&
-                clickY >= pos.y && clickY <= pos.y + placement.width) {
+            if (clickX >= pos.x && clickX <= pos.x + pLength &&
+                clickY >= pos.y && clickY <= pos.y + pWidth) {
 
                 // Select this component
                 uiState.selectedPlacement = {
                     componentIndex: compIdx,
                     floorIndex: floorIndex,
                     placementIndex: i,
-                    length: placement.length,
-                    width: placement.width,
+                    length: pLength,
+                    width: pWidth,
                     originalX: pos.x,
                     originalY: pos.y
                 };
@@ -887,12 +908,11 @@ function handleComponentSelection(event, floorIndex) {
 
                 // Redraw with selection highlight
                 drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth);
-                drawSelectionHighlight(canvas, pos.x, pos.y, placement.length, placement.width, pixelsPerMeter);
+                drawSelectionHighlight(canvas, pos.x, pos.y, pLength, pWidth, pixelsPerMeter);
 
                 // Show instructions
                 showSelectionInstructions();
 
-                console.log(`Selected ${shipData.components[compIdx].item} at (${pos.x}, ${pos.y})`);
                 return;
             }
         }
@@ -953,11 +973,13 @@ function handleComponentMove(event, floorIndex) {
         return;
     }
 
-    // Add at new position
+    // Add at new position with same dimensions
     placement.floors.push({
         floor: floorIndex,
         x: newX,
-        y: newY
+        y: newY,
+        length: sel.length,
+        width: sel.width
     });
 
     // Clear selection
@@ -1004,7 +1026,7 @@ function showSelectionInstructions() {
         instructions.className = 'placement-instructions';
         document.body.appendChild(instructions);
     }
-    instructions.textContent = 'Click on a floor to move the selected component. Press Escape to cancel.';
+    instructions.textContent = 'Click to move | R/L to rotate | Delete to remove | Escape to cancel';
     instructions.classList.remove('hidden');
 }
 
@@ -1039,4 +1061,143 @@ function cancelSelection() {
 
     hideSelectionInstructions();
     console.log('Selection cancelled');
+}
+
+/**
+ * Delete the currently selected component
+ */
+function deleteSelectedComponent() {
+    const sel = uiState.selectedPlacement;
+    if (!sel) return;
+
+    const placement = shipData.componentPlacements[sel.componentIndex];
+    if (!placement || !placement.floors) return;
+
+    const pos = placement.floors[sel.placementIndex];
+    if (!pos) return;
+
+    // Add to undo history before deleting
+    uiState.placementHistory.push({
+        componentIndex: sel.componentIndex,
+        floor: pos.floor,
+        x: pos.x,
+        y: pos.y,
+        length: sel.length,
+        width: sel.width
+    });
+
+    // Clear redo history since we made a new action
+    uiState.redoHistory = [];
+
+    // Remove the placement
+    placement.floors.splice(sel.placementIndex, 1);
+
+    // If no more placements for this component, remove the entry
+    if (placement.floors.length === 0) {
+        delete shipData.componentPlacements[sel.componentIndex];
+    }
+
+    // Clear selection
+    const floorIndex = sel.floorIndex;
+    uiState.selectedPlacement = null;
+
+    // Redraw the floor
+    const canvas = document.getElementById(`floor-canvas-${floorIndex}`);
+    if (canvas) {
+        canvas.classList.remove('selection-mode');
+        const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
+        const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
+        const floorWidth = calculateFloorWidth(floorArea, shipData.floorLength);
+        drawFloorWithComponents(canvas, floorIndex, shipData.floorLength, floorWidth);
+    }
+
+    hideSelectionInstructions();
+
+    // Update components list
+    renderComponents();
+
+    const component = shipData.components[sel.componentIndex];
+    console.log(`Deleted ${component.item} from Floor ${floorIndex}`);
+}
+
+/**
+ * Rotate the currently selected component (swap length and width)
+ */
+function rotateSelectedComponent() {
+    const sel = uiState.selectedPlacement;
+    if (!sel) return;
+
+    const placement = shipData.componentPlacements[sel.componentIndex];
+    if (!placement || !placement.floors) return;
+
+    const pos = placement.floors[sel.placementIndex];
+    if (!pos) return;
+
+    // Calculate new rotated dimensions
+    const newLength = sel.width;
+    const newWidth = sel.length;
+
+    // Calculate floor dimensions for bounds checking
+    const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
+    const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
+    const floorWidth = calculateFloorWidth(floorArea, shipData.floorLength);
+    const floorLength = shipData.floorLength;
+
+    // Check if rotated component would fit at current position
+    let newX = pos.x;
+    let newY = pos.y;
+
+    // Adjust position if rotation would push it out of bounds
+    if (newX + newLength > floorLength) {
+        newX = floorLength - newLength;
+    }
+    if (newY + newWidth > floorWidth) {
+        newY = floorWidth - newWidth;
+    }
+    newX = Math.max(0, newX);
+    newY = Math.max(0, newY);
+
+    // Temporarily remove to check overlap
+    const oldPos = { ...pos };
+    placement.floors.splice(sel.placementIndex, 1);
+
+    // Check for overlap at new position with new dimensions
+    const hasOverlap = checkOverlap(sel.floorIndex, newX, newY, newLength, newWidth, -1);
+
+    if (hasOverlap) {
+        // Restore old position and show error
+        placement.floors.splice(sel.placementIndex, 0, oldPos);
+        const canvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
+        if (canvas) {
+            canvas.style.boxShadow = '0 0 20px red';
+            setTimeout(() => {
+                canvas.style.boxShadow = '';
+            }, 300);
+        }
+        return;
+    }
+
+    // Add rotated placement at new position with new dimensions
+    placement.floors.push({
+        floor: sel.floorIndex,
+        x: newX,
+        y: newY,
+        length: newLength,
+        width: newWidth
+    });
+
+    // Update selection state with new dimensions and position
+    sel.length = newLength;
+    sel.width = newWidth;
+    sel.originalX = newX;
+    sel.originalY = newY;
+    sel.placementIndex = placement.floors.length - 1;
+
+    // Redraw the floor
+    const canvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
+    if (canvas) {
+        const pixelsPerMeter = canvas.width / floorLength;
+        drawFloorWithComponents(canvas, sel.floorIndex, floorLength, floorWidth);
+        drawSelectionHighlight(canvas, newX, newY, newLength, newWidth, pixelsPerMeter);
+    }
 }

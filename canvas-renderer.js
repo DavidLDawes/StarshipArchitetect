@@ -79,9 +79,6 @@ function drawFloorWithComponents(canvas, floorIndex, length, width) {
     const canvasWidth = canvas.width;
     const pixelsPerMeter = canvasWidth / length;
 
-    // Debug: log placements being drawn
-    console.log(`Drawing floor ${floorIndex}, placements:`, JSON.stringify(shipData.componentPlacements));
-
     // Draw each component placed on this floor
     for (const [compIdxStr, placement] of Object.entries(shipData.componentPlacements)) {
         const compIdx = parseInt(compIdxStr);
@@ -89,11 +86,16 @@ function drawFloorWithComponents(canvas, floorIndex, length, width) {
 
         if (!placement.floors) continue;
 
+        // Count placements to get individual numbering
+        let placementNum = 0;
         for (const pos of placement.floors) {
+            placementNum++;
             if (pos.floor === floorIndex) {
-                console.log(`Drawing component ${component.item} at (${pos.x}, ${pos.y}) size ${placement.length}x${placement.width}`);
-                drawPlacedComponent(ctx, pos.x, pos.y, placement.length, placement.width,
-                    component, pixelsPerMeter, compIdx);
+                // Use per-placement dimensions (fallback to component-level for backwards compatibility)
+                const pLength = pos.length || placement.length;
+                const pWidth = pos.width || placement.width;
+                drawPlacedComponent(ctx, pos.x, pos.y, pLength, pWidth,
+                    component, pixelsPerMeter, compIdx, placementNum);
             }
         }
     }
@@ -101,8 +103,9 @@ function drawFloorWithComponents(canvas, floorIndex, length, width) {
 
 /**
  * Draw a placed component on the canvas
+ * @param {number} placementNum - The individual placement number (1, 2, 3, etc.)
  */
-function drawPlacedComponent(ctx, x, y, compLength, compWidth, component, pixelsPerMeter, compIdx) {
+function drawPlacedComponent(ctx, x, y, compLength, compWidth, component, pixelsPerMeter, compIdx, placementNum = 1) {
     const px = x * pixelsPerMeter;
     const py = y * pixelsPerMeter;
     const pw = compLength * pixelsPerMeter;
@@ -128,8 +131,16 @@ function drawPlacedComponent(ctx, x, y, compLength, compWidth, component, pixels
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // Get component name
-    let name = component.item;
+    // Get component name - use itemName for multi-quantity, add individual number
+    let baseName = component.itemName || component.item;
+    // Remove any "xN" suffix if present
+    baseName = baseName.replace(/\s*x\d+$/, '');
+
+    // Add individual number for multi-quantity components
+    let name = baseName;
+    if (component.quantity && component.quantity > 1) {
+        name = `${baseName} ${placementNum}`;
+    }
 
     // Calculate max chars that fit in the width
     const maxChars = Math.floor(pw / 7);
