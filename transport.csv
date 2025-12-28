@@ -1,0 +1,26 @@
+Category,Item,Mass,Cost
+Engines,Power Plant P-4,150.0,300.00
+,Maneuver Drive M-3,75.0,150.00
+,Jump Drive J-4,250.0,250.00
+Fittings,Bridge,120.0,60.00
+,Basic Civilian Comms & Sensors,1.0,0.05
+Weapons,Hard Point (x20),20.0,20.00
+Berths,Staterooms (x16),64.0,8.00
+,Luxury Staterooms (x24),120.0,14.40
+,Low Berths (x100),50.0,5.00
+,Emergency Low (x2),2.0,2.00
+Rec/Health,Commissary,2.0,0.20
+,Gym,3.0,0.10
+,Spa,1.5,0.20
+,Garden,4.0,0.05
+,Kitchens,3.0,0.40
+,First Aid Station,0.5,0.10
+,Library,1.0,0.10
+,Range,2.0,2.00
+,Autodoc,1.5,0.05
+Cargo,Secure Storage Bay,2.0,1.40
+,Cold Storage Bay,20.0,4.00
+,Spares,50.0,25.00
+,Cargo Bay,1752.0,0.00
+Vehicles,Air/Raft Truck,5.0,0.55
+Total,,4999.5,863.60

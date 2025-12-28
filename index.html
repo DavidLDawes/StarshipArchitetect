@@ -112,11 +112,11 @@
                 <h3 id="modal-component-name">Component Name</h3>
                 <button id="modal-close-btn" class="modal-close-btn">&times;</button>
             </div>
-            
+
             <div id="modal-component-stats" class="modal-stats">
                 <!-- Stats populated dynamically -->
             </div>
-            
+
             <div class="modal-body">
                 <div class="modal-row">
                     <label for="component-dimensions">Dimensions:</label>
@@ -124,14 +124,14 @@
                         <!-- Options populated dynamically -->
                     </select>
                 </div>
-                
+
                 <div class="modal-row">
                     <label for="component-floor-select">Place on Floor:</label>
                     <select id="component-floor-select" class="dimension-select">
                         <!-- Options populated dynamically -->
                     </select>
                 </div>
-                
+
                 <!-- Multi-floor section for large components -->
                 <div id="multi-floor-section" class="multi-floor-section hidden">
                     <p class="multi-floor-notice">
@@ -143,7 +143,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <div class="modal-footer">
                 <button id="modal-cancel-btn" class="btn btn-secondary">Cancel</button>
                 <button id="modal-place-btn" class="btn btn-primary">Place Component</button>
@@ -155,6 +155,10 @@
     <script src="csv-parser.js"></script>
     <script src="floor-utils.js"></script>
     <script src="canvas-renderer.js"></script>
+    <script src="component-dimensions.js"></script>
+    <script src="placement-logic.js"></script>
+    <script src="component-selection.js"></script>
+    <script src="undo-redo.js"></script>
     <script src="component-modal.js"></script>
     <script src="app.js"></script>
 </body>
