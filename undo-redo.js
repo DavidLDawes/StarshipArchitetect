@@ -39,13 +39,11 @@ function undoLastPlacement() {
     }
 
     // Redraw the affected floor
-    const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
-    const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
-    const floorWidth = calculateFloorWidth(floorArea, shipData.floorLength);
+    const { floorWidth, floorLength } = getCurrentFloorDimensions();
 
     const canvas = document.getElementById(`floor-canvas-${floor}`);
     if (canvas) {
-        drawFloorWithComponents(canvas, floor, shipData.floorLength, floorWidth);
+        drawFloorWithComponents(canvas, floor, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
     }
 
     // Update components list to reflect the change
@@ -71,7 +69,7 @@ function undoLastPlacement() {
     for (const f of allFloors) {
         const c = document.getElementById(`floor-canvas-${f}`);
         if (c) {
-            drawFloorWithComponents(c, f, shipData.floorLength, floorWidth);
+            drawFloorWithComponents(c, f, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
             c.classList.add('placement-mode');
         }
     }
@@ -125,13 +123,11 @@ function redoLastPlacement() {
     uiState.placementHistory.push(redoPlacement);
 
     // Redraw the affected floor
-    const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
-    const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
-    const floorWidth = calculateFloorWidth(floorArea, shipData.floorLength);
+    const { floorWidth, floorLength } = getCurrentFloorDimensions();
 
     const canvas = document.getElementById(`floor-canvas-${floor}`);
     if (canvas) {
-        drawFloorWithComponents(canvas, floor, shipData.floorLength, floorWidth);
+        drawFloorWithComponents(canvas, floor, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
     }
 
     // Update components list

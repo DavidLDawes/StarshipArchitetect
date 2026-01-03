@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comprehensive Dimension Tests</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f0f0f0;
+        }
+        .test-case {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        h3 {
+            color: #555;
+            margin: 10px 0 5px 0;
+        }
+        .pass {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .fail {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .options {
+            background: #f8f9fa;
+            padding: 10px;
+            margin: 5px 0;
+            border-left: 4px solid #007bff;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .summary {
+            background: #e9ecef;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <h1>Comprehensive Component Dimension Tests</h1>
+    <div id="test-results"></div>
+    <div id="summary" class="summary"></div>
+
+    <script>
+        const SQM_PER_TON = 14;
+        const shipData = {
+            ceilingHeight: 2.5,
+            numFloors: 8,
+            floorLength: 100,
+            totalTons: 5000
+        };
+    </script>
+    <script src="component-dimensions.js"></script>
+
+    <script>
+        const tests = [
+            {
+                name: "Maneuver Drive M-3 (Original Issue)",
+                component: { name: "Maneuver Drive M-3", tons: 75 },
+                floorLength: 100,
+                floorWidth: 35,
+                expected: {
+                    fullWidth: { length: 12, width: 35 },
+                    fullLength: null  // 4.2m < 5m minimum
+                }
+            },
+            {
+                name: "Large Component - Cargo Bay",
+                component: { name: "Cargo Bay", tons: 1752 },
+                floorLength: 100,
+                floorWidth: 35,
+                expected: {
+                    fullWidth: { length: 280.3, width: 35 },  // Won't fit (280.3 > 100)
+                    fullLength: { length: 100, width: 98.1 }  // Won't fit (98.1 > 35)
+                }
+            },
+            {
+                name: "Bridge (120 tons)",
+                component: { name: "Bridge", tons: 120 },
+                floorLength: 100,
+                floorWidth: 35,
+                expected: {
+                    fullWidth: { length: 19.2, width: 35 },
+                    fullLength: { length: 100, width: 6.7 }
+                }
+            },
+            {
+                name: "Power Plant P-4 (150 tons)",
+                component: { name: "Power Plant P-4", tons: 150 },
+                floorLength: 100,
+                floorWidth: 35,
+                expected: {
+                    fullWidth: { length: 24, width: 35 },
+                    fullLength: { length: 100, width: 8.4 }
+                }
+            },
+            {
+                name: "Jump Drive J-4 (250 tons)",
+                component: { name: "Jump Drive J-4", tons: 250 },
+                floorLength: 100,
+                floorWidth: 35,
+                expected: {
+                    fullWidth: { length: 40, width: 35 },
+                    fullLength: { length: 100, width: 14 }
+                }
+            },
+            {
+                name: "Small Component - Autodoc",
+                component: { name: "Autodoc", tons: 1.5 },
+                floorLength: 100,
+                floorWidth: 35,
+                expected: {
+                    fullWidth: null,  // 0.24m < 5m minimum
+                    fullLength: null  // 0.084m < 5m minimum
+                }
+            }
+        ];
+
+        function runTests() {
+            const resultsDiv = document.getElementById('test-results');
+            let passCount = 0;
+            let failCount = 0;
+
+            tests.forEach((test, idx) => {
+                const floorArea = test.floorLength * test.floorWidth;
+                const result = generateComponentDimensionOptions(
+                    test.component,
+                    floorArea,
+                    test.floorLength,
+                    test.floorWidth
+                );
+
+                const componentArea = result.componentArea;
+                const testDiv = document.createElement('div');
+                testDiv.className = 'test-case';
+
+                let html = `<h3>Test ${idx + 1}: ${test.name}</h3>`;
+                html += `<p>Component: ${componentArea.toFixed(1)} m² (${test.component.tons} tons)</p>`;
+                html += `<p>Floor: ${test.floorLength}m × ${test.floorWidth}m = ${floorArea} m²</p>`;
+
+                // Check full width option
+                const hasFullWidth = result.options.find(opt =>
+                    opt.label.includes("(full width)") &&
+                    Math.abs(opt.width - test.floorWidth) < 0.1
+                );
+
+                // Check full length option
+                const hasFullLength = result.options.find(opt =>
+                    opt.label.includes("(full length)") &&
+                    Math.abs(opt.length - test.floorLength) < 0.1
+                );
+
+                let passed = true;
+
+                // Test full width expectation
+                if (test.expected.fullWidth) {
+                    const expectedLength = test.expected.fullWidth.length;
+                    if (hasFullWidth && Math.abs(hasFullWidth.length - expectedLength) < 0.5) {
+                        html += `<p class="pass">✓ Full width option found: ${hasFullWidth.label}</p>`;
+                    } else {
+                        html += `<p class="fail">✗ Expected full width (${expectedLength.toFixed(1)} × ${test.floorWidth}m) not found</p>`;
+                        passed = false;
+                    }
+                } else {
+                    if (!hasFullWidth) {
+                        html += `<p class="pass">✓ Full width option correctly absent</p>`;
+                    } else {
+                        html += `<p class="fail">✗ Unexpected full width option: ${hasFullWidth.label}</p>`;
+                        passed = false;
+                    }
+                }
+
+                // Test full length expectation
+                if (test.expected.fullLength) {
+                    const expectedWidth = test.expected.fullLength.width;
+                    if (hasFullLength && Math.abs(hasFullLength.width - expectedWidth) < 0.5) {
+                        html += `<p class="pass">✓ Full length option found: ${hasFullLength.label}</p>`;
+                    } else {
+                        html += `<p class="fail">✗ Expected full length (${test.floorLength} × ${expectedWidth.toFixed(1)}m) not found</p>`;
+                        passed = false;
+                    }
+                } else {
+                    if (!hasFullLength) {
+                        html += `<p class="pass">✓ Full length option correctly absent</p>`;
+                    } else {
+                        html += `<p class="fail">✗ Unexpected full length option: ${hasFullLength.label}</p>`;
+                        passed = false;
+                    }
+                }
+
+                // Show all options
+                html += '<div class="options">';
+                html += `<strong>All options (${result.options.length}):</strong><br>`;
+                result.options.slice(0, 10).forEach((opt, i) => {
+                    const area = (opt.length * opt.width).toFixed(1);
+                    html += `${i + 1}. ${opt.label} = ${area} m²<br>`;
+                });
+                if (result.options.length > 10) {
+                    html += `... and ${result.options.length - 10} more<br>`;
+                }
+                html += '</div>';
+
+                if (passed) {
+                    passCount++;
+                } else {
+                    failCount++;
+                }
+
+                testDiv.innerHTML = html;
+                resultsDiv.appendChild(testDiv);
+            });
+
+            // Show summary
+            const summaryDiv = document.getElementById('summary');
+            const totalTests = tests.length;
+            summaryDiv.innerHTML = `
+                <h2>Test Summary</h2>
+                <p>Total: ${totalTests} | <span class="pass">Passed: ${passCount}</span> | <span class="fail">Failed: ${failCount}</span></p>
+                ${failCount === 0 ? '<p class="pass">All tests passed! ✓</p>' : '<p class="fail">Some tests failed. Please review above.</p>'}
+            `;
+        }
+
+        window.addEventListener('load', runTests);
+    </script>
+</body>
+</html>

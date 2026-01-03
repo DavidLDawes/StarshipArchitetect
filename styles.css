@@ -355,6 +355,24 @@ body {
     font-size: 1.2rem;
 }
 
+/* Floor Selector */
+.floor-selector-container {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+    padding: var(--spacing-md);
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+}
+
+.floor-selector-container label {
+    color: var(--color-text-secondary);
+    font-weight: 500;
+    min-width: 100px;
+}
+
 /* Floor List */
 .floor-list {
     display: flex;

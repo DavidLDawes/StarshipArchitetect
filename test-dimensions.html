@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Component Dimensions</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f0f0f0;
+        }
+        .test-case {
+            background: white;
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h2 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .result {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-left: 4px solid #007bff;
+        }
+        .pass {
+            border-left-color: #28a745;
+        }
+        .fail {
+            border-left-color: #dc3545;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Component Dimensions Test</h1>
+
+    <div class="test-case">
+        <h2>Test Case: Maneuver Drive M-3</h2>
+        <p><strong>Configuration:</strong></p>
+        <ul>
+            <li>Component: Maneuver Drive M-3 (75 tons)</li>
+            <li>Floors: 8</li>
+            <li>Floor dimensions: 100m × 35m</li>
+            <li>Ceiling height: 2.5m</li>
+        </ul>
+        <p><strong>Expected:</strong></p>
+        <ul>
+            <li>Component area: 75 × 14 / 2.5 = 420 m²</li>
+            <li>Should see "12.0 × 35.0 m (full width)" option</li>
+            <li>12m × 35m = 420 m² ✓</li>
+        </ul>
+        <div id="test-result" class="result"></div>
+        <h3>Generated Options:</h3>
+        <pre id="options-output"></pre>
+    </div>
+
+    <!-- Load the necessary scripts -->
+    <script>
+        // Mock global constants and data
+        const SQM_PER_TON = 14;
+        const shipData = {
+            ceilingHeight: 2.5,
+            numFloors: 8,
+            floorLength: 100,
+            totalTons: 5000  // Not used in this test
+        };
+    </script>
+    <script src="component-dimensions.js"></script>
+
+    <script>
+        // Run the test
+        function runTest() {
+            const component = {
+                name: "Maneuver Drive M-3",
+                tons: 75,
+                category: "Engines"
+            };
+
+            const floorArea = 100 * 35;  // 3500 m²
+            const floorLength = 100;
+            const floorWidth = 35;
+
+            console.log("Test Configuration:");
+            console.log("  Component tons:", component.tons);
+            console.log("  Floor area:", floorArea, "m²");
+            console.log("  Floor length:", floorLength, "m");
+            console.log("  Floor width:", floorWidth, "m");
+
+            const result = generateComponentDimensionOptions(
+                component,
+                floorArea,
+                floorLength,
+                floorWidth
+            );
+
+            console.log("\nCalculated component area:", result.componentArea, "m²");
+            console.log("Options generated:", result.options.length);
+            console.log("\nAll options:");
+            result.options.forEach((opt, idx) => {
+                console.log(`  ${idx + 1}. ${opt.label} (${opt.length}m × ${opt.width}m)`);
+            });
+
+            // Check if the expected option exists
+            const hasFullWidthOption = result.options.some(opt =>
+                opt.label.includes("(full width)") &&
+                Math.abs(opt.width - 35) < 0.1 &&
+                Math.abs(opt.length - 12) < 0.1
+            );
+
+            // Display results
+            const resultDiv = document.getElementById('test-result');
+            const optionsOutput = document.getElementById('options-output');
+
+            optionsOutput.textContent = result.options
+                .map((opt, idx) => `${idx + 1}. ${opt.label} (${opt.length}m × ${opt.width}m = ${(opt.length * opt.width).toFixed(1)} m²)`)
+                .join('\n');
+
+            if (hasFullWidthOption) {
+                resultDiv.className = 'result pass';
+                resultDiv.innerHTML = '<strong>✓ PASS:</strong> Found "12.0 × 35.0 m (full width)" option!';
+            } else {
+                resultDiv.className = 'result fail';
+                resultDiv.innerHTML = '<strong>✗ FAIL:</strong> "12.0 × 35.0 m (full width)" option NOT found!';
+            }
+        }
+
+        // Run test when page loads
+        window.addEventListener('load', runTest);
+    </script>
+</body>
+</html>

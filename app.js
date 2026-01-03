@@ -77,7 +77,7 @@ function showSections() {
  * Update ship statistics display
  */
 function updateStats() {
-    const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
+    const { totalArea } = getCurrentFloorDimensions();
 
     elements.totalTons.textContent = shipData.totalTons.toLocaleString();
     elements.totalSqm.textContent = Math.round(totalArea).toLocaleString();
@@ -88,15 +88,13 @@ function updateStats() {
  * Update floor configuration display
  */
 function updateFloorConfig() {
-    const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
-    const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
-    const width = calculateFloorWidth(floorArea, shipData.floorLength);
+    const { floorArea, floorWidth } = getCurrentFloorDimensions();
 
     elements.floorCount.textContent = shipData.numFloors;
     elements.floorLength.value = shipData.floorLength;
     elements.ceilingHeight.value = shipData.ceilingHeight;
     elements.sqmPerFloor.textContent = Math.round(floorArea).toLocaleString();
-    elements.floorWidth.textContent = width.toFixed(1);
+    elements.floorWidth.textContent = floorWidth.toFixed(1);
 
     // Update dimension dropdown
     updateDimensionDropdown(floorArea);
@@ -145,9 +143,7 @@ function updateDimensionDropdown(floorArea) {
  * Render floor list with canvas visualizations
  */
 function renderFloors() {
-    const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
-    const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
-    const width = calculateFloorWidth(floorArea, shipData.floorLength);
+    const { floorWidth, floorLength } = getCurrentFloorDimensions();
 
     elements.floorList.innerHTML = '';
 
@@ -162,7 +158,7 @@ function renderFloors() {
             <div class="floor-number">${i}</div>
             <div class="floor-details">
                 <div class="floor-name">Floor ${i}</div>
-                <div class="floor-dimensions">${shipData.floorLength} × ${width.toFixed(1)} meters, ${shipData.ceilingHeight} meters tall</div>
+                <div class="floor-dimensions">${floorLength} × ${floorWidth.toFixed(1)} meters, ${shipData.ceilingHeight} meters tall</div>
             </div>
         `;
         floorItem.appendChild(floorInfo);
@@ -176,10 +172,10 @@ function renderFloors() {
         canvas.id = `floor-canvas-${i}`;
 
         // Calculate canvas dimensions maintaining aspect ratio
-        const aspectRatio = width / shipData.floorLength;
+        const aspectRatio = floorWidth / floorLength;
 
         canvas.style.width = '100%';
-        canvas.style.aspectRatio = `${shipData.floorLength} / ${width}`;
+        canvas.style.aspectRatio = `${floorLength} / ${floorWidth}`;
 
         // Set actual canvas resolution for drawing
         canvas.width = 800;
@@ -195,11 +191,14 @@ function renderFloors() {
         elements.floorList.appendChild(floorItem);
 
         // Draw floor with any placed components
-        drawFloorWithComponents(canvas, i, shipData.floorLength, width);
+        drawFloorWithComponents(canvas, i, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
     }
 
     // Setup drag preview handlers on all canvases
     setupDragPreview();
+
+    // Setup floor selector with updated floor count
+    setupFloorSelector();
 }
 
 /**
@@ -379,10 +378,8 @@ elements.floorDimensions.addEventListener('change', function (event) {
         elements.floorLength.value = selectedLength;
 
         // Recalculate width
-        const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
-        const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
-        const width = calculateFloorWidth(floorArea, selectedLength);
-        elements.floorWidth.textContent = width.toFixed(1);
+        const { floorWidth } = getCurrentFloorDimensions();
+        elements.floorWidth.textContent = floorWidth.toFixed(1);
 
         // Clear placements when dimensions change
         shipData.componentPlacements = {};
@@ -397,5 +394,6 @@ elements.floorDimensions.addEventListener('change', function (event) {
 // ========================================
 document.addEventListener('DOMContentLoaded', function () {
     setupComponentModalEvents();
+    initializeFloorSelector();
     console.log('🚀 Starship Architect initialized');
 });

@@ -70,8 +70,11 @@ function drawFloorGrid(canvas, length, width) {
  * @param {number} floorIndex - Floor number (1-based)
  * @param {number} length - Floor length in meters
  * @param {number} width - Floor width in meters
+ * @param {Object} placements - Component placements data (defaults to global shipData.componentPlacements)
+ * @param {Array} components - Components array (defaults to global shipData.components)
+ * @param {Object} selectedPlacement - Currently selected placement for highlighting (defaults to global uiState.selectedPlacement)
  */
-function drawFloorWithComponents(canvas, floorIndex, length, width) {
+function drawFloorWithComponents(canvas, floorIndex, length, width, placements = shipData.componentPlacements, components = shipData.components, selectedPlacement = uiState.selectedPlacement) {
     // First draw the base grid
     drawFloorGrid(canvas, length, width);
 
@@ -80,9 +83,9 @@ function drawFloorWithComponents(canvas, floorIndex, length, width) {
     const pixelsPerMeter = canvasWidth / length;
 
     // Draw each component placed on this floor
-    for (const [compIdxStr, placement] of Object.entries(shipData.componentPlacements)) {
+    for (const [compIdxStr, placement] of Object.entries(placements)) {
         const compIdx = parseInt(compIdxStr);
-        const component = shipData.components[compIdx];
+        const component = components[compIdx];
 
         if (!placement.floors) continue;
 

@@ -5,7 +5,11 @@
       "Bash(curl:*)",
       "Bash(pkill:*)",
       "Bash(xargs kill:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(node -c:*)",
+      "Bash(taskkill:*)",
+      "Bash(ls:*)",
+      "Bash(start test-floor-dimensions-fix.html)"
     ]
   }
 }

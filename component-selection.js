@@ -17,10 +17,7 @@ function handleComponentSelection(event, floorIndex) {
     const scaleY = canvas.height / rect.height;
 
     // Calculate click position in meters
-    const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
-    const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
-    const floorWidth = calculateFloorWidth(floorArea, shipData.floorLength);
-    const floorLength = shipData.floorLength;
+    const { floorWidth, floorLength } = getCurrentFloorDimensions();
     const pixelsPerMeter = canvas.width / floorLength;
 
     const clickPxX = (event.clientX - rect.left) * scaleX;
@@ -60,7 +57,7 @@ function handleComponentSelection(event, floorIndex) {
                 canvas.classList.add('selection-mode');
 
                 // Redraw with selection highlight
-                drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth);
+                drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
                 drawSelectionHighlight(canvas, pos.x, pos.y, pLength, pWidth, pixelsPerMeter);
 
                 // Show instructions
@@ -131,10 +128,8 @@ function cancelSelection() {
     const canvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
     if (canvas) {
         canvas.classList.remove('selection-mode');
-        const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
-        const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
-        const floorWidth = calculateFloorWidth(floorArea, shipData.floorLength);
-        drawFloorWithComponents(canvas, sel.floorIndex, shipData.floorLength, floorWidth);
+        const { floorWidth, floorLength } = getCurrentFloorDimensions();
+        drawFloorWithComponents(canvas, sel.floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
     }
 
     hideSelectionInstructions();
@@ -157,10 +152,7 @@ function handleComponentMove(event, floorIndex) {
     const scaleY = canvas.height / rect.height;
 
     // Calculate click position
-    const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
-    const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
-    const floorWidth = calculateFloorWidth(floorArea, shipData.floorLength);
-    const floorLength = shipData.floorLength;
+    const { floorWidth, floorLength } = getCurrentFloorDimensions();
     const pixelsPerMeter = canvas.width / floorLength;
 
     const clickPxX = (event.clientX - rect.left) * scaleX;
@@ -216,9 +208,9 @@ function handleComponentMove(event, floorIndex) {
     // Redraw affected floors
     const oldCanvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
     if (oldCanvas && sel.floorIndex !== floorIndex) {
-        drawFloorWithComponents(oldCanvas, sel.floorIndex, floorLength, floorWidth);
+        drawFloorWithComponents(oldCanvas, sel.floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
     }
-    drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth);
+    drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
 }
 
 // ========================================
@@ -243,10 +235,7 @@ function rotateSelectedComponent() {
     const newWidth = sel.length;
 
     // Calculate floor dimensions for bounds checking
-    const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
-    const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
-    const floorWidth = calculateFloorWidth(floorArea, shipData.floorLength);
-    const floorLength = shipData.floorLength;
+    const { floorWidth, floorLength } = getCurrentFloorDimensions();
 
     // Check if rotated component would fit at current position
     let newX = pos.x;
@@ -302,7 +291,7 @@ function rotateSelectedComponent() {
     const canvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
     if (canvas) {
         const pixelsPerMeter = canvas.width / floorLength;
-        drawFloorWithComponents(canvas, sel.floorIndex, floorLength, floorWidth);
+        drawFloorWithComponents(canvas, sel.floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
         drawSelectionHighlight(canvas, newX, newY, newLength, newWidth, pixelsPerMeter);
     }
 }
@@ -353,10 +342,8 @@ function deleteSelectedComponent() {
     const canvas = document.getElementById(`floor-canvas-${floorIndex}`);
     if (canvas) {
         canvas.classList.remove('selection-mode');
-        const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
-        const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
-        const floorWidth = calculateFloorWidth(floorArea, shipData.floorLength);
-        drawFloorWithComponents(canvas, floorIndex, shipData.floorLength, floorWidth);
+        const { floorWidth, floorLength } = getCurrentFloorDimensions();
+        drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
     }
 
     hideSelectionInstructions();

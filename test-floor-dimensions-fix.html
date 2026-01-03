@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Floor Dimension Options Fix</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f0f0f0;
+        }
+        .test-case {
+            background: white;
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h2 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .result {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-left: 4px solid #007bff;
+        }
+        .pass {
+            border-left-color: #28a745;
+            background: #d4edda;
+        }
+        .fail {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        .summary {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Floor Dimension Options Fix - Test Suite</h1>
+
+    <div class="summary" id="summary"></div>
+
+    <div class="test-case">
+        <h2>Test 1: Maneuver Drive M-3 (User's Reported Issue)</h2>
+        <p><strong>Configuration:</strong></p>
+        <ul>
+            <li>Component: Maneuver Drive M-3 (75 tons)</li>
+            <li>Floor dimensions: 100m × 35m (3500 m²)</li>
+            <li>Ceiling height: 2.5m</li>
+        </ul>
+        <p><strong>Expected:</strong></p>
+        <ul>
+            <li>Component area: 75 × 14 / 2.5 = 420 m²</li>
+            <li><strong>MUST see "12.0 × 35.0 m (full width)"</strong> (420 / 35 = 12, and 12 >= 5 ✓)</li>
+            <li>Should NOT see "100.0 × 4.2 m (full length)" (4.2 < 5 ✗)</li>
+            <li>Should NOT see "168.0 × 2.5 m (ceiling height)" (168 > 100 floor length ✗)</li>
+        </ul>
+        <div id="test1-result" class="result"></div>
+        <h3>Generated Options:</h3>
+        <pre id="test1-options"></pre>
+    </div>
+
+    <div class="test-case">
+        <h2>Test 2: Small Component (Ceiling Height Option Should Appear)</h2>
+        <p><strong>Configuration:</strong></p>
+        <ul>
+            <li>Component: Test Component (10 tons)</li>
+            <li>Floor dimensions: 100m × 35m (3500 m²)</li>
+            <li>Ceiling height: 2.5m</li>
+        </ul>
+        <p><strong>Expected:</strong></p>
+        <ul>
+            <li>Component area: 10 × 14 / 2.5 = 56 m²</li>
+            <li>Should see "22.4 × 2.5 m (ceiling height)" (56 / 2.5 = 22.4, and 22.4 >= 5 ✓ AND 22.4 <= 100 ✓)</li>
+            <li>Should see "1.6 × 35.0 m (full width)" (56 / 35 = 1.6, but 1.6 < 5 ✗ for large component)</li>
+        </ul>
+        <div id="test2-result" class="result"></div>
+        <h3>Generated Options:</h3>
+        <pre id="test2-options"></pre>
+    </div>
+
+    <div class="test-case">
+        <h2>Test 3: Wide Component (Full Length Option Should Appear)</h2>
+        <p><strong>Configuration:</strong></p>
+        <ul>
+            <li>Component: Test Component (50 tons)</li>
+            <li>Floor dimensions: 100m × 35m (3500 m²)</li>
+            <li>Ceiling height: 2.5m</li>
+        </ul>
+        <p><strong>Expected:</strong></p>
+        <ul>
+            <li>Component area: 50 × 14 / 2.5 = 280 m²</li>
+            <li>Should see "8.0 × 35.0 m (full width)" (280 / 35 = 8, and 8 >= 5 ✓)</li>
+            <li>Should NOT see "100.0 × 2.8 m (full length)" (2.8 < 5 ✗)</li>
+            <li>Should see "112.0 × 2.5 m (ceiling height)" (280 / 2.5 = 112, but 112 > 100 ✗)</li>
+        </ul>
+        <div id="test3-result" class="result"></div>
+        <h3>Generated Options:</h3>
+        <pre id="test3-options"></pre>
+    </div>
+
+    <!-- Load the necessary scripts -->
+    <script>
+        // Mock global constants and data
+        const SQM_PER_TON = 14;
+        const shipData = {
+            ceilingHeight: 2.5,
+            numFloors: 8,
+            floorLength: 100,
+            totalTons: 5000
+        };
+    </script>
+    <script src="component-dimensions.js"></script>
+
+    <script>
+        let passCount = 0;
+        let failCount = 0;
+
+        function runTest(testNum, component, floorLength, floorWidth, expectations) {
+            const floorArea = floorLength * floorWidth;
+
+            console.log(`\n=== Test ${testNum}: ${component.name} ===`);
+            console.log(`  Component tons: ${component.tons}`);
+            console.log(`  Floor: ${floorLength}m × ${floorWidth}m (${floorArea} m²)`);
+
+            const result = generateComponentDimensionOptions(
+                component,
+                floorArea,
+                floorLength,
+                floorWidth
+            );
+
+            console.log(`  Component area: ${result.componentArea} m²`);
+            console.log(`  Options generated: ${result.options.length}`);
+
+            const resultDiv = document.getElementById(`test${testNum}-result`);
+            const optionsDiv = document.getElementById(`test${testNum}-options`);
+
+            // Display all options
+            optionsDiv.textContent = result.options
+                .map((opt, idx) => {
+                    const area = (opt.length * opt.width).toFixed(1);
+                    return `${idx + 1}. ${opt.label}\n   → ${opt.length}m × ${opt.width}m = ${area} m²`;
+                })
+                .join('\n\n');
+
+            // Check expectations
+            const results = [];
+            let allPassed = true;
+
+            for (const exp of expectations) {
+                const found = result.options.some(opt => {
+                    const labelMatch = exp.labelContains ? opt.label.includes(exp.labelContains) : true;
+                    const lengthMatch = exp.length ? Math.abs(opt.length - exp.length) < 0.1 : true;
+                    const widthMatch = exp.width ? Math.abs(opt.width - exp.width) < 0.1 : true;
+                    return labelMatch && lengthMatch && widthMatch;
+                });
+
+                const passed = found === exp.shouldExist;
+                results.push({
+                    description: exp.description,
+                    expected: exp.shouldExist ? 'SHOULD EXIST' : 'SHOULD NOT EXIST',
+                    actual: found ? 'EXISTS' : 'DOES NOT EXIST',
+                    passed
+                });
+
+                if (!passed) allPassed = false;
+            }
+
+            // Display results
+            const resultHTML = results.map(r => {
+                const icon = r.passed ? '✓' : '✗';
+                const style = r.passed ? 'color: green;' : 'color: red; font-weight: bold;';
+                return `${icon} ${r.description}<br>` +
+                       `   Expected: ${r.expected}, Actual: ${r.actual}`;
+            }).join('<br><br>');
+
+            resultDiv.className = allPassed ? 'result pass' : 'result fail';
+            resultDiv.innerHTML = `<strong>${allPassed ? '✓ PASS' : '✗ FAIL'}</strong><br><br>${resultHTML}`;
+
+            if (allPassed) {
+                passCount++;
+                console.log('  ✓ PASS');
+            } else {
+                failCount++;
+                console.log('  ✗ FAIL');
+            }
+
+            return allPassed;
+        }
+
+        // Run all tests when page loads
+        window.addEventListener('load', function() {
+            console.log('Starting Floor Dimension Options Test Suite...');
+
+            // Test 1: Maneuver Drive M-3 (User's reported issue)
+            runTest(1,
+                { name: "Maneuver Drive M-3", tons: 75, category: "Engines" },
+                100, 35,
+                [
+                    {
+                        description: '"12.0 × 35.0 m (full width)" option',
+                        labelContains: '(full width)',
+                        length: 12,
+                        width: 35,
+                        shouldExist: true
+                    },
+                    {
+                        description: '"100.0 × 4.2 m (full length)" option',
+                        labelContains: '(full length)',
+                        shouldExist: false
+                    },
+                    {
+                        description: '"168.0 × 2.5 m (ceiling height)" option',
+                        labelContains: '(ceiling height)',
+                        shouldExist: false
+                    }
+                ]
+            );
+
+            // Test 2: Small component (ceiling height should appear)
+            runTest(2,
+                { name: "Test Component", tons: 10, category: "Test" },
+                100, 35,
+                [
+                    {
+                        description: 'Ceiling height option should appear',
+                        labelContains: '(ceiling height)',
+                        width: 2.5,
+                        shouldExist: true
+                    }
+                ]
+            );
+
+            // Test 3: Wide component
+            runTest(3,
+                { name: "Test Component", tons: 50, category: "Test" },
+                100, 35,
+                [
+                    {
+                        description: '"8.0 × 35.0 m (full width)" option',
+                        labelContains: '(full width)',
+                        length: 8,
+                        width: 35,
+                        shouldExist: true
+                    },
+                    {
+                        description: 'Full length option (2.8m < 5m minimum)',
+                        labelContains: '(full length)',
+                        shouldExist: false
+                    }
+                ]
+            );
+
+            // Update summary
+            const summary = document.getElementById('summary');
+            const total = passCount + failCount;
+            const allPassed = failCount === 0;
+
+            summary.innerHTML = `
+                <h2>Test Summary</h2>
+                <p style="font-size: 18px; ${allPassed ? 'color: green;' : 'color: red;'}">
+                    <strong>${passCount} / ${total} tests passed</strong>
+                </p>
+                ${allPassed ?
+                    '<p style="color: green; font-weight: bold;">✓ All tests passed! The floor dimension options fix is working correctly.</p>' :
+                    '<p style="color: red; font-weight: bold;">✗ Some tests failed. Please review the results above.</p>'
+                }
+            `;
+
+            console.log(`\n=== Test Suite Complete ===`);
+            console.log(`  Passed: ${passCount} / ${total}`);
+            console.log(`  Failed: ${failCount} / ${total}`);
+        });
+    </script>
+</body>
+</html>

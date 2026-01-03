@@ -90,6 +90,16 @@
         <section id="floor-display-section" class="card hidden">
             <h2>📐 Floor Layout</h2>
             <p class="section-hint">Click on a component below to configure its dimensions and place it on a floor.</p>
+
+            <!-- Floor Selector Dropdown -->
+            <div id="floor-selector-container" class="floor-selector-container">
+                <label for="floor-selector">Select Floor:</label>
+                <select id="floor-selector" class="dimension-select">
+                    <option value="all">All</option>
+                    <!-- Dynamic floor options will be added by JavaScript -->
+                </select>
+            </div>
+
             <div id="floor-list" class="floor-list">
                 <!-- Floors will be dynamically generated here -->
             </div>
@@ -160,7 +170,9 @@
     <script src="component-selection.js"></script>
     <script src="undo-redo.js"></script>
     <script src="drag-preview.js"></script>
+    <script src="placement-controller.js"></script>
     <script src="component-modal.js"></script>
+    <script src="floor-selector.js"></script>
     <script src="app.js"></script>
 </body>
 

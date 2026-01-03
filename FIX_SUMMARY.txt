@@ -1,0 +1,67 @@
+===============================================================================
+FLOOR DIMENSION OPTIONS FIX - SUMMARY
+===============================================================================
+
+ISSUE:
+------
+Floor dimension options like "12 × 35 m (full width)" were not appearing in
+the dimension dropdown, even for components that qualified.
+
+TEST CASE:
+- Component: Maneuver Drive M-3 (75 tons = 420 m²)
+- Floor: 100m × 35m
+- Expected: "12 × 35 m (full width)" option (where 12 = 420/35)
+- Actual: Option was missing
+
+ROOT CAUSE:
+-----------
+The dimension option generation code had a section ordering problem:
+
+1. Generic options were generated FIRST (e.g., "12 × 35 m")
+2. Floor-specific options tried to add LATER (e.g., "12 × 35 m (full width)")
+3. The `seen` Set blocked duplicates, so the descriptive labels never appeared
+
+FIX:
+----
+Reordered the option generation sections in component-dimensions.js:
+- Floor dimension options (with descriptive labels) now generate FIRST
+- Generic options generate AFTER and get blocked if they duplicate
+- Result: Users see "12 × 35 m (full width)" instead of "12 × 35 m"
+
+VERIFICATION:
+-------------
+Created two test pages to verify the fix:
+1. test-dimensions.html - Basic test
+2. test-dimensions-comprehensive.html - Multiple test cases
+
+All test cases pass:
+✓ Maneuver Drive M-3: "12 × 35 m (full width)" appears
+✓ Bridge: "19.2 × 35 m (full width)" and "100 × 6.7 m (full length)" appear
+✓ Power Plant P-4: Both full width and full length options appear
+✓ Jump Drive J-4: Both full width and full length options appear
+✓ Small components: Correctly exclude options where dimension < 5m
+
+TESTING IN MAIN APP:
+--------------------
+1. Start server: python -m http.server 8000
+2. Open: http://localhost:8000/
+3. Load Transport.csv
+4. Set configuration: 8 floors, 100m × 35m
+5. Click "Maneuver Drive M-3" component
+6. Open dimension dropdown
+7. Verify "12 × 35 m (full width)" option appears
+
+FILES MODIFIED:
+---------------
+✓ component-dimensions.js
+  - Reordered option generation sections (lines 67-110)
+  - Added explanatory comments
+
+FILES CREATED:
+--------------
+✓ test-dimensions.html (basic test page)
+✓ test-dimensions-comprehensive.html (comprehensive test suite)
+✓ DIMENSION_FIX.md (detailed technical documentation)
+✓ FIX_SUMMARY.txt (this file)
+
+===============================================================================

@@ -1,11 +1,11 @@
 /**
  * Starship Architect - Component Modal Module
- * Handles component modal UI and canvas click coordination
- * 
+ * Handles component modal UI (showing/hiding, populating dropdowns, form handling)
+ *
  * Dependencies:
  * - component-dimensions.js (dimension calculation)
- * - placement-logic.js (overlap, positioning)
- * - component-selection.js (selection, move, rotate, delete)
+ * - floor-utils.js (getCurrentFloorDimensions)
+ * - placement-controller.js (placement orchestration happens there)
  * - undo-redo.js (history management)
  */
 
@@ -23,12 +23,10 @@ function openComponentModal(componentIndex) {
 
     uiState.selectedComponent = componentIndex;
 
-    const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
-    const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
-    const floorWidth = calculateFloorWidth(floorArea, shipData.floorLength);
+    const { floorArea, floorWidth, floorLength } = getCurrentFloorDimensions();
 
     const dimInfo = generateComponentDimensionOptions(
-        component, floorArea, shipData.floorLength, floorWidth
+        component, floorArea, floorLength, floorWidth
     );
 
     // Populate modal
@@ -150,6 +148,11 @@ function startPlacement() {
         isMultiFloor: modal.dataset.isMultiFloor === 'true'
     };
 
+    // Auto-select the first floor in the floor selector dropdown
+    if (selectedFloors.length > 0) {
+        setFloorSelector(selectedFloors[0]);
+    }
+
     // Close modal and enable canvas clicks
     closeComponentModal();
 
@@ -210,186 +213,6 @@ function showPlacementInstructionsMulti(floors, itemName, remaining, total) {
     const placed = total - remaining;
     instructions.textContent = `Placing ${itemName} (${placed + 1} of ${total}). Click any floor to place. Press Escape to cancel.`;
     instructions.classList.remove('hidden');
-}
-
-// ========================================
-// Canvas Click Handler
-// ========================================
-
-/**
- * Handle canvas click during placement or selection
- */
-function handleCanvasPlacement(event, floorIndex) {
-    // If we're moving a selected component
-    if (uiState.selectedPlacement) {
-        handleComponentMove(event, floorIndex);
-        return;
-    }
-
-    // If not in placement mode, try to select a component
-    if (!uiState.isPlacingComponent) {
-        handleComponentSelection(event, floorIndex);
-        return;
-    }
-
-    const data = uiState.placementData;
-    if (!data.floors.includes(floorIndex)) return;
-
-    const canvas = event.target;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-
-    // Calculate floor dimensions
-    const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
-    const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
-    const floorWidth = calculateFloorWidth(floorArea, shipData.floorLength);
-    const floorLength = shipData.floorLength;
-    const pixelsPerMeter = canvas.width / floorLength;
-
-    // Get click position in pixels
-    const clickPxX = (event.clientX - rect.left) * scaleX;
-    const clickPxY = (event.clientY - rect.top) * scaleY;
-
-    // Convert to meters
-    const clickX = clickPxX / pixelsPerMeter;
-    const clickY = clickPxY / pixelsPerMeter;
-
-    // Component dimensions
-    const compLength = data.length;
-    const compWidth = data.width;
-
-    // Calculate initial position (center component on click)
-    let x = clickX - compLength / 2;
-    let y = clickY - compWidth / 2;
-
-    // Snap to edges
-    if (clickX <= compLength) {
-        x = 0;
-    } else if (clickX >= floorLength - compLength) {
-        x = floorLength - compLength;
-    }
-
-    if (clickY <= compWidth) {
-        y = 0;
-    } else if (clickY >= floorWidth - compWidth) {
-        y = floorWidth - compWidth;
-    }
-
-    // Ensure component fits within floor bounds
-    x = Math.max(0, Math.min(x, floorLength - compLength));
-    y = Math.max(0, Math.min(y, floorWidth - compWidth));
-
-    // Round to nearest meter for clean grid alignment
-    x = Math.round(x);
-    y = Math.round(y);
-
-    // Try to find a valid position, adjusting if there's overlap
-    const position = findValidPosition(
-        floorIndex, x, y, compLength, compWidth,
-        floorLength, floorWidth, -1
-    );
-
-    if (!position) {
-        canvas.style.boxShadow = '0 0 20px red';
-        setTimeout(() => { canvas.style.boxShadow = ''; }, 300);
-        return;
-    }
-
-    x = position.x;
-    y = position.y;
-
-    // For multi-floor components, place on ALL selected floors at once
-    if (data.isMultiFloor) {
-        // Check overlap on ALL selected floors first
-        let allValid = true;
-        for (const f of data.floors) {
-            if (!findValidPosition(f, x, y, compLength, compWidth, floorLength, floorWidth, -1)) {
-                allValid = false;
-                break;
-            }
-        }
-
-        if (!allValid) {
-            canvas.style.boxShadow = '0 0 20px red';
-            setTimeout(() => { canvas.style.boxShadow = ''; }, 300);
-            return;
-        }
-
-        // Place on all selected floors at the same position
-        if (!shipData.componentPlacements[data.componentIndex]) {
-            shipData.componentPlacements[data.componentIndex] = { floors: [] };
-        }
-
-        for (const f of data.floors) {
-            shipData.componentPlacements[data.componentIndex].floors.push({
-                floor: f, x: x, y: y, length: compLength, width: compWidth
-            });
-
-            // Record in history for undo
-            uiState.placementHistory.push({
-                componentIndex: data.componentIndex, floor: f,
-                x: x, y: y, length: compLength, width: compWidth
-            });
-
-            // Redraw each floor
-            const c = document.getElementById(`floor-canvas-${f}`);
-            if (c) {
-                drawFloorWithComponents(c, f, shipData.floorLength, floorWidth);
-                c.classList.remove('placement-mode');
-            }
-        }
-
-        uiState.redoHistory = [];
-        finishPlacement();
-        return;
-    }
-
-    // Store placement with individual dimensions (for single-floor components)
-    if (!shipData.componentPlacements[data.componentIndex]) {
-        shipData.componentPlacements[data.componentIndex] = { floors: [] };
-    }
-
-    shipData.componentPlacements[data.componentIndex].floors.push({
-        floor: floorIndex, x: x, y: y, length: compLength, width: compWidth
-    });
-
-    // Record in history for undo
-    uiState.placementHistory.push({
-        componentIndex: data.componentIndex, floor: floorIndex,
-        x: x, y: y, length: compLength, width: compWidth
-    });
-    uiState.redoHistory = [];
-
-    // Check if more items to place (multi-quantity single-floor components)
-    const component = shipData.components[data.componentIndex];
-    const totalQuantity = component.quantity || 1;
-    const placement = shipData.componentPlacements[data.componentIndex];
-    const placedCount = placement ? placement.floors.length : 0;
-
-    if (placedCount < totalQuantity) {
-        renderComponents();
-        data.floors = [];
-        for (let i = 1; i <= shipData.numFloors; i++) {
-            data.floors.push(i);
-        }
-        for (const floor of data.floors) {
-            const c = document.getElementById(`floor-canvas-${floor}`);
-            if (c) {
-                drawFloorWithComponents(c, floor, shipData.floorLength, floorWidth);
-                c.classList.add('placement-mode');
-            }
-        }
-        const remaining = totalQuantity - placedCount;
-        showPlacementInstructionsMulti(data.floors, component.itemName || component.item, remaining, totalQuantity);
-    } else {
-        const canvasEl = document.getElementById(`floor-canvas-${floorIndex}`);
-        if (canvasEl) {
-            drawFloorWithComponents(canvasEl, floorIndex, shipData.floorLength, floorWidth);
-            canvasEl.classList.remove('placement-mode');
-        }
-        finishPlacement();
-    }
 }
 
 // ========================================

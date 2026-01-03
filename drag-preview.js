@@ -156,7 +156,7 @@ function handleCanvasMouseMove(event, floorIndex) {
     if (previewState.animationFrameId === null) {
         previewState.animationFrameId = requestAnimationFrame(() => {
             // Redraw floor with components and preview
-            drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth);
+            drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
             drawPreview(canvas, floorIndex, floorLength, floorWidth);
             previewState.animationFrameId = null;
         });
@@ -175,7 +175,7 @@ function handleCanvasMouseLeave(event, floorIndex) {
         const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
         const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
         const floorWidth = calculateFloorWidth(floorArea, shipData.floorLength);
-        drawFloorWithComponents(canvas, floorIndex, shipData.floorLength, floorWidth);
+        drawFloorWithComponents(canvas, floorIndex, shipData.floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
     }
 }
 

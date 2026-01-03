@@ -137,3 +137,20 @@ function generateDimensionOptionsWithStep(floorArea, step) {
 
     return options;
 }
+
+/**
+ * Get current floor dimensions from global shipData
+ * Centralizes the repeated calculation pattern used throughout the codebase
+ * @returns {Object} Object containing { totalArea, floorArea, floorWidth, floorLength }
+ */
+function getCurrentFloorDimensions() {
+    const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
+    const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
+    const floorWidth = calculateFloorWidth(floorArea, shipData.floorLength);
+    return {
+        totalArea,
+        floorArea,
+        floorWidth,
+        floorLength: shipData.floorLength
+    };
+}
