@@ -124,6 +124,9 @@ function cancelSelection() {
     const sel = uiState.selectedPlacement;
     uiState.selectedPlacement = null;
 
+    // Clear drag preview
+    clearPreview();
+
     // Remove visual feedback and redraw
     const canvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
     if (canvas) {
@@ -204,8 +207,9 @@ function handleComponentMove(event, floorIndex) {
         width: sel.width
     });
 
-    // Clear selection
+    // Clear selection and preview
     uiState.selectedPlacement = null;
+    clearPreview();
     canvas.classList.remove('selection-mode');
     hideSelectionInstructions();
 

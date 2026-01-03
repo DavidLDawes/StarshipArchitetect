@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m http.server:*)",
+      "Bash(curl:*)",
+      "Bash(pkill:*)",
+      "Bash(xargs kill:*)",
+      "Bash(grep:*)"
+    ]
+  }
+}

@@ -144,6 +144,9 @@ function finishPlacement() {
     uiState.isPlacingComponent = false;
     uiState.placementData = null;
 
+    // Clear drag preview
+    clearPreview();
+
     // Remove placement-mode class from all canvases
     document.querySelectorAll('.floor-canvas.placement-mode').forEach(c => {
         c.classList.remove('placement-mode');
@@ -170,6 +173,9 @@ function cancelPlacement() {
     if (data && shipData.componentPlacements[data.componentIndex]) {
         // Keep existing placements, just cancel the current session
     }
+
+    // Clear drag preview
+    clearPreview();
 
     finishPlacement();
 }

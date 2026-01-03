@@ -197,6 +197,9 @@ function renderFloors() {
         // Draw floor with any placed components
         drawFloorWithComponents(canvas, i, shipData.floorLength, width);
     }
+
+    // Setup drag preview handlers on all canvases
+    setupDragPreview();
 }
 
 /**
