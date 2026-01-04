@@ -18,6 +18,11 @@
  * Routes clicks to appropriate handlers based on current state
  */
 function handleCanvasPlacement(event, floorIndex) {
+    // Don't handle click if we just completed a resize
+    if (resizeState && resizeState.isResizing) {
+        return;
+    }
+
     // If we're moving a selected component
     if (uiState.selectedPlacement) {
         handleComponentMove(event, floorIndex);

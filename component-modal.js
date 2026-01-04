@@ -14,6 +14,68 @@
 // ========================================
 
 /**
+ * Update dimension options and area display based on selected floors
+ */
+function updateDimensionOptions() {
+    const modal = document.getElementById('component-modal');
+    const componentIndex = parseInt(modal.dataset.componentIndex);
+    const component = shipData.components[componentIndex];
+
+    if (!component) return;
+
+    const { floorArea, floorWidth, floorLength } = getCurrentFloorDimensions();
+
+    // Get selected floor count
+    let numSelectedFloors = 1;
+    if (modal.dataset.isMultiFloor === 'true') {
+        const checkboxes = document.querySelectorAll('input[name="component-floors"]:checked');
+        numSelectedFloors = checkboxes.length;
+
+        // Need at least 1 floor selected
+        if (numSelectedFloors === 0) {
+            numSelectedFloors = 1;
+        }
+    }
+
+    // Recalculate dimensions with selected floor count
+    const dimInfo = generateComponentDimensionOptions(
+        component, floorArea, floorLength, floorWidth, numSelectedFloors
+    );
+
+    // Update dimension dropdown
+    const dimSelect = document.getElementById('component-dimensions');
+    dimSelect.innerHTML = '';
+    for (const opt of dimInfo.options) {
+        const option = document.createElement('option');
+        option.value = `${opt.length},${opt.width}`;
+        option.textContent = opt.label;
+        dimSelect.appendChild(option);
+    }
+
+    // Update area display
+    updateAreaDisplay(dimInfo.componentArea, numSelectedFloors, dimInfo.areaPerFloor);
+}
+
+/**
+ * Update the area display section
+ */
+function updateAreaDisplay(totalArea, numFloors, areaPerFloor) {
+    const display = document.getElementById('modal-area-display');
+    if (numFloors > 1) {
+        display.innerHTML = `
+            <div class="area-info">
+                Total: ${totalArea.toFixed(1)} m² across ${numFloors} floors
+                (${areaPerFloor.toFixed(1)} m² per floor)
+            </div>
+        `;
+        display.classList.remove('hidden');
+    } else {
+        display.innerHTML = '';
+        display.classList.add('hidden');
+    }
+}
+
+/**
  * Open the component dimension modal
  * @param {number} componentIndex - Index of the component in shipData.components
  */
@@ -53,10 +115,35 @@ function openComponentModal(componentIndex) {
         dimSelect.appendChild(option);
     }
 
-    // Handle multi-floor components
-    if (dimInfo.isMultiFloor) {
+    // Calculate size category for better user guidance
+    const areaRatio = dimInfo.componentArea / floorArea;
+    const isMultiFloorRequired = areaRatio > 1.0;
+    const isLargeItem = areaRatio > 0.25 && areaRatio <= 1.0;
+
+    // Show multi-floor section for either required multi-floor OR large items
+    if (dimInfo.isMultiFloor || isLargeItem) {
         multiFloorSection.classList.remove('hidden');
         document.getElementById('floors-needed').textContent = dimInfo.floorsNeeded;
+
+        // Show appropriate hint message
+        const floorHint = document.getElementById('floor-selection-hint');
+        const multiFloorNotice = document.querySelector('.multi-floor-notice');
+
+        if (isMultiFloorRequired) {
+            // Component MUST span multiple floors
+            floorHint.textContent = `This component requires ${dimInfo.floorsNeeded} floors.`;
+            floorHint.classList.remove('hidden');
+            multiFloorNotice.classList.remove('hidden');
+        } else if (isLargeItem) {
+            // Large component that COULD span multiple floors
+            floorHint.textContent = 'Large items may fit better if split across multiple floors; choose one or more floors for this item.';
+            floorHint.classList.remove('hidden');
+            multiFloorNotice.classList.add('hidden');
+        } else {
+            // Normal multi-floor handling
+            floorHint.classList.add('hidden');
+            multiFloorNotice.classList.remove('hidden');
+        }
 
         // Create floor checkboxes
         const floorCheckboxes = document.getElementById('floor-checkboxes');
@@ -69,6 +156,27 @@ function openComponentModal(componentIndex) {
                 Floor ${i}
             `;
             floorCheckboxes.appendChild(label);
+        }
+
+        // Add change listeners to floor checkboxes
+        document.querySelectorAll('input[name="component-floors"]').forEach(checkbox => {
+            checkbox.addEventListener('change', updateDimensionOptions);
+        });
+
+        // Auto-select floors based on component type
+        if (isMultiFloorRequired) {
+            // Auto-check the minimum required floors
+            for (let i = 1; i <= dimInfo.floorsNeeded && i <= shipData.numFloors; i++) {
+                const checkbox = document.querySelector(`input[name="component-floors"][value="${i}"]`);
+                if (checkbox) checkbox.checked = true;
+            }
+            // Initialize area display with minimum floors needed
+            updateAreaDisplay(dimInfo.componentArea, dimInfo.floorsNeeded, dimInfo.areaPerFloor);
+        } else {
+            // For large items, only check first floor by default (user can add more)
+            const firstCheckbox = document.querySelector('input[name="component-floors"][value="1"]');
+            if (firstCheckbox) firstCheckbox.checked = true;
+            updateAreaDisplay(dimInfo.componentArea, 1, dimInfo.componentArea);
         }
 
         floorSelect.classList.add('hidden');
@@ -84,11 +192,15 @@ function openComponentModal(componentIndex) {
             option.textContent = `Floor ${i}`;
             floorSelect.appendChild(option);
         }
+
+        // Hide area display for single-floor components
+        document.getElementById('modal-area-display').classList.add('hidden');
     }
 
     // Store metadata for placement
-    modal.dataset.isMultiFloor = dimInfo.isMultiFloor;
-    modal.dataset.floorsNeeded = dimInfo.floorsNeeded;
+    modal.dataset.isMultiFloor = dimInfo.isMultiFloor || isLargeItem;
+    modal.dataset.floorsNeeded = isMultiFloorRequired ? dimInfo.floorsNeeded : 1;
+    modal.dataset.isLargeItem = isLargeItem;
     modal.dataset.componentIndex = componentIndex;
 
     // Show modal
@@ -128,8 +240,15 @@ function startPlacement() {
         selectedFloors = Array.from(checkboxes).map(cb => parseInt(cb.value));
 
         const floorsNeeded = parseInt(modal.dataset.floorsNeeded);
-        if (selectedFloors.length < floorsNeeded) {
+        const isLargeItem = modal.dataset.isLargeItem === 'true';
+
+        // For required multi-floor components, enforce minimum floor count
+        // For large items, just require at least one floor
+        if (!isLargeItem && selectedFloors.length < floorsNeeded) {
             alert(`Please select at least ${floorsNeeded} floors for this component.`);
+            return;
+        } else if (selectedFloors.length < 1) {
+            alert('Please select at least one floor for this component.');
             return;
         }
     } else {

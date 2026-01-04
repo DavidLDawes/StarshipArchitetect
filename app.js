@@ -197,6 +197,14 @@ function renderFloors() {
     // Setup drag preview handlers on all canvases
     setupDragPreview();
 
+    // Setup resize handlers on all canvases
+    for (let i = 1; i <= shipData.numFloors; i++) {
+        const canvas = document.getElementById(`floor-canvas-${i}`);
+        if (canvas) {
+            setupResizeHandlers(canvas, i);
+        }
+    }
+
     // Setup floor selector with updated floor count
     setupFloorSelector();
 }
@@ -286,6 +294,137 @@ function refreshUI() {
 }
 
 // ========================================
+// CSV Loading Functions
+// ========================================
+
+/**
+ * Load and process CSV data from a string
+ * @param {string} csvString - CSV content as string
+ * @param {string} source - Source description for logging (e.g., "URL", "file")
+ */
+function loadCsvFromString(csvString, source = 'unknown') {
+    try {
+        const parsed = parseCSV(csvString);
+
+        if (!parsed.components || parsed.components.length === 0) {
+            throw new Error('No valid components found in CSV data');
+        }
+
+        // Update state
+        shipData.totalTons = parsed.totalTons;
+        shipData.totalCost = parsed.totalCost;
+        shipData.components = parsed.components;
+        shipData.componentPlacements = {}; // Reset placements
+
+        // Calculate default floor length
+        const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
+        const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
+        shipData.floorLength = calculateDefaultFloorLength(floorArea);
+
+        // Show sections and refresh UI
+        showSections();
+        refreshUI();
+
+        console.log(`Loaded ${parsed.components.length} components from ${source} (${shipData.totalTons} tons)`);
+        return true;
+    } catch (error) {
+        console.error(`Error loading CSV from ${source}:`, error);
+        throw error; // Re-throw for caller to handle
+    }
+}
+
+/**
+ * Check for CSV data in URL parameters and load if present
+ * @returns {boolean} True if CSV was loaded from URL, false otherwise
+ */
+function checkForUrlCsvData() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const csvData = urlParams.get('csv');
+
+    if (csvData) {
+        try {
+            // URL decode the CSV data
+            const decodedCsv = decodeURIComponent(csvData);
+
+            // Parse and load the CSV
+            loadCsvFromString(decodedCsv, 'URL');
+
+            // Hide the file upload section
+            const uploadSection = document.getElementById('upload-section');
+            if (uploadSection) {
+                uploadSection.style.display = 'none';
+            }
+
+            return true; // CSV loaded from URL
+        } catch (error) {
+            console.error('Error loading CSV from URL:', error);
+            alert('Error loading CSV data from URL: ' + error.message + '\n\nPlease upload a file instead.');
+            return false;
+        }
+    }
+
+    return false; // No CSV in URL
+}
+
+/**
+ * Convert components array back to CSV string format
+ * @param {Array} components - Array of component objects
+ * @returns {string} CSV formatted string
+ */
+function generateCsvString(components) {
+    let csv = 'Category,Item,Tons,Cost\n';
+    components.forEach(c => {
+        // Escape fields that contain commas by wrapping in quotes
+        const category = c.category.includes(',') ? `"${c.category}"` : c.category;
+        const item = c.item.includes(',') ? `"${c.item}"` : c.item;
+        csv += `${category},${item},${c.tons},${c.cost}\n`;
+    });
+    return csv;
+}
+
+/**
+ * Generate a shareable URL with current ship design
+ */
+function generateShareableUrl() {
+    if (!shipData.components || shipData.components.length === 0) {
+        alert('No ship data to share. Please load a CSV first.');
+        return;
+    }
+
+    try {
+        // Convert components back to CSV format
+        const csvString = generateCsvString(shipData.components);
+
+        // URL encode the CSV data
+        const encodedCsv = encodeURIComponent(csvString);
+
+        // Generate URL
+        const baseUrl = window.location.href.split('?')[0]; // Remove existing params
+        const shareUrl = `${baseUrl}?csv=${encodedCsv}`;
+
+        // Check if URL is too long (browser limit ~2000 chars)
+        if (shareUrl.length > 2000) {
+            alert('Warning: The generated URL is very long (' + shareUrl.length + ' characters).\n\n' +
+                'Some browsers may have issues with URLs longer than 2000 characters.\n' +
+                'Consider uploading the CSV file instead of using a URL for very large ship designs.');
+        }
+
+        // Copy to clipboard
+        navigator.clipboard.writeText(shareUrl).then(() => {
+            alert('Shareable URL copied to clipboard!\n\nShare this URL to let others view this ship design.');
+            console.log('Shareable URL:', shareUrl);
+        }).catch((err) => {
+            // Fallback: show URL in a prompt for manual copying
+            console.error('Clipboard API failed:', err);
+            prompt('Copy this URL to share (Ctrl+C, then press OK):', shareUrl);
+        });
+    } catch (error) {
+        console.error('Error generating shareable URL:', error);
+        alert('Error generating shareable URL: ' + error.message);
+    }
+}
+
+// ========================================
 // Event Handlers
 // ========================================
 
@@ -301,25 +440,9 @@ elements.csvInput.addEventListener('change', function (event) {
     const reader = new FileReader();
     reader.onload = function (e) {
         try {
-            const parsed = parseCSV(e.target.result);
-
-            // Update state
-            shipData.totalTons = parsed.totalTons;
-            shipData.totalCost = parsed.totalCost;
-            shipData.components = parsed.components;
-            shipData.componentPlacements = {}; // Reset placements
-
-            // Calculate default floor length
-            const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
-            const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
-            shipData.floorLength = calculateDefaultFloorLength(floorArea);
-
-            // Show sections and refresh UI
-            showSections();
-            refreshUI();
+            loadCsvFromString(e.target.result, `file: ${file.name}`);
         } catch (error) {
-            alert('Error parsing CSV: ' + error.message);
-            console.error(error);
+            alert('Error parsing CSV file: ' + error.message);
         }
     };
     reader.readAsText(file);
@@ -393,6 +516,19 @@ elements.floorDimensions.addEventListener('change', function (event) {
 // Initialization
 // ========================================
 document.addEventListener('DOMContentLoaded', function () {
+    // Check for CSV data in URL parameters first
+    const loadedFromUrl = checkForUrlCsvData();
+
+    if (loadedFromUrl) {
+        console.log('Loaded ship design from URL parameter');
+    }
+
+    // Setup share button
+    const shareButton = document.getElementById('share-button');
+    if (shareButton) {
+        shareButton.addEventListener('click', generateShareableUrl);
+    }
+
     setupComponentModalEvents();
     initializeFloorSelector();
     console.log('🚀 Starship Architect initialized');

@@ -1,191 +1,206 @@
-# Drag Preview Implementation - Summary
+# Large Item Multi-Floor Selection - Implementation Summary
 
 ## Overview
-Successfully implemented drag preview with visual feedback for the Starship Architect tool. The feature provides real-time visual feedback during component placement and movement operations with green/red validation coloring.
+Implemented a feature to show different messages for large components (>25% of floor area) when selecting floors for placement, providing better user guidance.
 
-## Implementation Statistics
+## Changes Made
 
-### New Code
-- **File**: `C:\Users\David L. Dawes\Play\StarshipArchitetect\drag-preview.js`
-- **Lines**: 230 lines
-- **Functions**: 5 main functions
-  1. `drawPreview()` - Renders preview on canvas (~30 lines)
-  2. `handleCanvasMouseMove()` - Handles mouse movement (~70 lines)
-  3. `handleCanvasMouseLeave()` - Handles mouse leaving canvas (~15 lines)
-  4. `clearPreview()` - Clears preview state (~15 lines)
-  5. `setupDragPreview()` - Attaches event handlers (~30 lines)
+### 1. HTML Changes (`index.html`)
+**File**: `C:\Users\David L. Dawes\Play\StarshipArchitetect\index.html`
 
-### Modified Code
-1. **index.html** - Added script tag for drag-preview.js (1 line)
-2. **app.js** - Added call to setupDragPreview() in renderFloors() (2 lines)
-3. **placement-logic.js** - Added clearPreview() calls in finishPlacement() and cancelPlacement() (2 lines)
-4. **component-selection.js** - Added clearPreview() calls in cancelSelection() and handleComponentMove() (2 lines)
-
-**Total**: ~237 lines (230 new + 7 integration)
-
-## Key Features
-
-### 1. Preview State Management
-```javascript
-let previewState = {
-    isActive: false,
-    floorIndex: null,
-    x: null,
-    y: null,
-    length: null,
-    width: null,
-    excludeComponentIndex: -1,
-    animationFrameId: null
-};
+**Change**: Added floor selection hint element inside multi-floor section (line 151)
+```html
+<div id="multi-floor-section" class="multi-floor-section hidden">
+    <div id="floor-selection-hint" class="floor-selection-hint hidden"></div>
+    <p class="multi-floor-notice">
+        ⚠️ This component requires <strong id="floors-needed">2</strong> floors.
+        Select which floors to span:
+    </p>
+    ...
+</div>
 ```
 
-### 2. Visual Feedback
-- **Valid placement**: Green translucent (rgba(0, 255, 100, 0.3))
-- **Invalid placement**: Red translucent (rgba(255, 0, 0, 0.3))
-- **Border**: Dashed (5px dash, 5px gap), 2px width
-- **Positioning**: Centered on mouse, snapped to grid
+### 2. CSS Changes (`styles.css`)
+**File**: `C:\Users\David L. Dawes\Play\StarshipArchitetect\styles.css`
 
-### 3. Integration Points
-- Component placement mode (`uiState.isPlacingComponent`)
-- Component move mode (`uiState.selectedPlacement`)
-- Existing overlap detection (`checkOverlap()`)
-- Existing canvas rendering (`drawFloorWithComponents()`)
+**Changes**: Added styling for floor-selection-hint (lines 717-731)
+```css
+/* Floor selection hint */
+.floor-selection-hint {
+    background-color: rgba(33, 150, 243, 0.15);
+    border-left: 4px solid var(--color-accent-primary);
+    padding: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+    font-size: 0.9em;
+    color: var(--color-accent-primary);
+    border-radius: var(--radius-sm);
+    line-height: 1.5;
+}
 
-### 4. Performance Optimization
-- `requestAnimationFrame` throttling (max 60 FPS)
-- Cancels pending frames on preview clear
-- Only redraws on mouse movement
-- Clears on mouseleave to prevent ghost previews
-
-## Architecture Decisions
-
-### Why a Separate Module?
-- **Separation of concerns**: Preview logic isolated from placement/selection logic
-- **Maintainability**: Easy to modify or disable preview feature
-- **Reusability**: Preview functions can be called from any mode
-
-### Why requestAnimationFrame?
-- **Performance**: Throttles redraws to monitor refresh rate (60 FPS)
-- **Smooth animation**: Prevents frame drops during rapid mouse movement
-- **Browser optimization**: Browser handles frame timing automatically
-
-### Why Store Handlers on Canvas?
-```javascript
-canvas._mouseMoveHandler = mouseMoveHandler;
-canvas._mouseLeaveHandler = mouseLeaveHandler;
+.floor-selection-hint.hidden {
+    display: none;
+}
 ```
-- **Cleanup**: Can remove old handlers before attaching new ones
-- **Avoid duplicates**: Prevents multiple handlers on same canvas
-- **Memory management**: Proper cleanup prevents memory leaks
 
-## Integration Flow
+### 3. JavaScript Changes (`component-modal.js`)
+**File**: `C:\Users\David L. Dawes\Play\StarshipArchitetect\component-modal.js`
 
-### Component Placement
-1. User clicks component → Modal opens
-2. User selects dimensions and floor → Clicks "Place Component"
-3. `startPlacement()` sets `uiState.isPlacingComponent = true`
-4. `setupDragPreview()` attaches mousemove handlers
-5. Mouse moves over canvas → `handleCanvasMouseMove()` fires
-6. Preview position calculated and validated
-7. `drawPreview()` renders preview on canvas
-8. User clicks to place → Preview cleared
-9. `finishPlacement()` calls `clearPreview()`
+#### Change 1: Size Category Calculation (lines 118-122)
+Added logic to calculate component size relative to floor area:
+```javascript
+// Calculate size category for better user guidance
+const areaRatio = dimInfo.componentArea / floorArea;
+const isMultiFloorRequired = areaRatio > 1.0;
+const isLargeItem = areaRatio > 0.25 && areaRatio <= 1.0;
+```
 
-### Component Movement
-1. User clicks placed component → `handleComponentSelection()` fires
-2. `uiState.selectedPlacement` set with component info
-3. Mouse moves over canvas → `handleCanvasMouseMove()` fires
-4. Preview shows with `excludeComponentIndex` set
-5. User clicks new position → Component moves
-6. `handleComponentMove()` calls `clearPreview()`
+#### Change 2: Show Multi-Floor Section for Large Items (line 124)
+Updated condition to show multi-floor section for both required multi-floor AND large items:
+```javascript
+if (dimInfo.isMultiFloor || isLargeItem) {
+```
 
-## Edge Cases Handled
+#### Change 3: Conditional Message Display (lines 128-146)
+Added logic to show different messages based on component size:
+```javascript
+// Show appropriate hint message
+const floorHint = document.getElementById('floor-selection-hint');
+const multiFloorNotice = document.querySelector('.multi-floor-notice');
 
-1. **Multi-floor components**: Preview only on target floor
-2. **Component rotation**: Preview updates with new dimensions
-3. **Multi-quantity components**: Preview persists across placements
-4. **Boundary clamping**: Preview stays within floor bounds
-5. **Rapid mode switching**: Proper cleanup prevents ghost previews
-6. **Mouse leave**: Preview clears immediately
-7. **Cancel actions**: Preview clears on Escape key
-8. **Zero-ton components**: No preview (no physical placement)
+if (isMultiFloorRequired) {
+    // Component MUST span multiple floors
+    floorHint.textContent = `This component requires ${dimInfo.floorsNeeded} floors.`;
+    floorHint.classList.remove('hidden');
+    multiFloorNotice.classList.remove('hidden');
+} else if (isLargeItem) {
+    // Large component that COULD span multiple floors
+    floorHint.textContent = 'Large items may fit better if split across multiple floors; choose one or more floors for this item.';
+    floorHint.classList.remove('hidden');
+    multiFloorNotice.classList.add('hidden');
+} else {
+    // Normal multi-floor handling
+    floorHint.classList.add('hidden');
+    multiFloorNotice.classList.remove('hidden');
+}
+```
 
-## Testing Strategy
+#### Change 4: Conditional Auto-Selection (lines 166-180)
+Updated floor auto-selection logic:
+```javascript
+// Auto-select floors based on component type
+if (isMultiFloorRequired) {
+    // Auto-check the minimum required floors
+    for (let i = 1; i <= dimInfo.floorsNeeded && i <= shipData.numFloors; i++) {
+        const checkbox = document.querySelector(`input[name="component-floors"][value="${i}"]`);
+        if (checkbox) checkbox.checked = true;
+    }
+    // Initialize area display with minimum floors needed
+    updateAreaDisplay(dimInfo.componentArea, dimInfo.floorsNeeded, dimInfo.areaPerFloor);
+} else {
+    // For large items, only check first floor by default (user can add more)
+    const firstCheckbox = document.querySelector('input[name="component-floors"][value="1"]');
+    if (firstCheckbox) firstCheckbox.checked = true;
+    updateAreaDisplay(dimInfo.componentArea, 1, dimInfo.componentArea);
+}
+```
 
-### Manual Testing
-- See `TEST_INSTRUCTIONS.md` for comprehensive test scenarios
-- 11 test scenarios covering all features and edge cases
+#### Change 5: Updated Metadata Storage (lines 200-204)
+Store additional metadata for placement validation:
+```javascript
+// Store metadata for placement
+modal.dataset.isMultiFloor = dimInfo.isMultiFloor || isLargeItem;
+modal.dataset.floorsNeeded = isMultiFloorRequired ? dimInfo.floorsNeeded : 1;
+modal.dataset.isLargeItem = isLargeItem;
+modal.dataset.componentIndex = componentIndex;
+```
 
-### Visual Testing
-- Green/red color validation
-- Smooth mouse following
-- Grid snapping behavior
-- Dashed border appearance
+#### Change 6: Updated Validation in startPlacement() (lines 236-257)
+Modified validation to handle large items differently:
+```javascript
+// Determine which floors
+let selectedFloors = [];
+if (modal.dataset.isMultiFloor === 'true') {
+    const checkboxes = document.querySelectorAll('input[name="component-floors"]:checked');
+    selectedFloors = Array.from(checkboxes).map(cb => parseInt(cb.value));
 
-### Performance Testing
-- Rapid mouse movement (no lag)
-- Multiple placements (no memory leaks)
-- Canvas resize handling
-- Browser console (no errors)
+    const floorsNeeded = parseInt(modal.dataset.floorsNeeded);
+    const isLargeItem = modal.dataset.isLargeItem === 'true';
 
-## Files Reference
+    // For required multi-floor components, enforce minimum floor count
+    // For large items, just require at least one floor
+    if (!isLargeItem && selectedFloors.length < floorsNeeded) {
+        alert(`Please select at least ${floorsNeeded} floors for this component.`);
+        return;
+    } else if (selectedFloors.length < 1) {
+        alert('Please select at least one floor for this component.');
+        return;
+    }
+} else {
+    const floorSelect = document.getElementById('component-floor-select');
+    selectedFloors = [parseInt(floorSelect.value)];
+}
+```
 
-### Created Files
-- `C:\Users\David L. Dawes\Play\StarshipArchitetect\drag-preview.js`
-- `C:\Users\David L. Dawes\Play\StarshipArchitetect\DRAG_PREVIEW_IMPLEMENTATION.md`
-- `C:\Users\David L. Dawes\Play\StarshipArchitetect\TEST_INSTRUCTIONS.md`
+## Behavior Summary
+
+### Component Size Categories
+
+1. **Multi-Floor Required (>100% of floor area)**
+   - Message: "This component requires X floors."
+   - Shows warning notice with ⚠️
+   - Auto-selects minimum required floors
+   - Validation: Must select at least X floors
+
+2. **Large Item (25-100% of floor area)**
+   - Message: "Large items may fit better if split across multiple floors; choose one or more floors for this item."
+   - Hides warning notice
+   - Auto-selects only first floor
+   - Validation: Must select at least 1 floor (user can add more)
+
+3. **Normal Component (≤25% of floor area)**
+   - No special message
+   - Shows single floor dropdown
+   - No multi-floor options
+
+### Threshold: 25%
+- Chosen because items this large benefit from being spread across floors for better ship layout
+- Balances between suggesting multi-floor for truly large items vs. cluttering UI for medium items
+
+## Test Files Created
+
+1. **TEST_LARGE_ITEMS.md** - Comprehensive test plan with:
+   - Detailed test cases for each size category
+   - Expected behaviors and validation
+   - Test case summary table
+   - Examples with different floor sizes
+   - Visual verification checklist
+
+## Files Modified
+
+- `C:\Users\David L. Dawes\Play\StarshipArchitetect\index.html`
+- `C:\Users\David L. Dawes\Play\StarshipArchitetect\styles.css`
+- `C:\Users\David L. Dawes\Play\StarshipArchitetect\component-modal.js`
+
+## Files Created
+
+- `C:\Users\David L. Dawes\Play\StarshipArchitetect\TEST_LARGE_ITEMS.md`
 - `C:\Users\David L. Dawes\Play\StarshipArchitetect\IMPLEMENTATION_SUMMARY.md`
 
-### Modified Files
-- `C:\Users\David L. Dawes\Play\StarshipArchitetect\index.html`
-- `C:\Users\David L. Dawes\Play\StarshipArchitetect\app.js`
-- `C:\Users\David L. Dawes\Play\StarshipArchitetect\placement-logic.js`
-- `C:\Users\David L. Dawes\Play\StarshipArchitetect\component-selection.js`
+## Testing Instructions
 
-## Code Quality
+1. Open `index.html` in browser
+2. Load `transport.csv`
+3. Configure floors: 4 floors, 100m × 35m, 2.5m ceiling height
+4. Test components from different categories:
+   - Fuel Tank (2000t) - Should require 4 floors
+   - Staterooms (560t) - Should show large item message
+   - Power Plant (150t) - Should show normal single floor dropdown
+5. Verify messages, auto-selection, and validation work correctly
 
-### Follows Project Patterns
-- Pure vanilla JavaScript (no frameworks)
-- Direct DOM manipulation
-- Imperative procedural style
-- Detailed JSDoc comments
-- Clear function naming
+## No Breaking Changes
 
-### Best Practices
-- Single responsibility functions
-- Proper error handling
-- Resource cleanup (cancelAnimationFrame)
-- Consistent code style with existing codebase
-- No global namespace pollution (module pattern)
-
-## Next Steps
-
-### Recommended Testing
-1. Open `http://localhost:8000/index.html` in browser
-2. Load `sample-ship.csv` or `transport.csv`
-3. Follow test scenarios in `TEST_INSTRUCTIONS.md`
-4. Verify all expected behaviors
-
-### Future Enhancements (Optional)
-1. Add preview for rotation (show rotated preview on 'R' key)
-2. Add preview for multi-floor components (simultaneous preview on all floors)
-3. Add snap-to-component edges (magnetic alignment)
-4. Add keyboard controls for preview (arrow keys for fine positioning)
-5. Add preview measurements (show dimensions on preview)
-
-## Success Criteria Met
-
-✅ Preview state management (~20 lines)
-✅ Preview rendering with validation coloring (~40 lines)
-✅ Mouse handlers with requestAnimationFrame throttling (~30 lines)
-✅ Integration with placement mode
-✅ Integration with move mode
-✅ Uses existing overlap detection
-✅ Follows vanilla JS patterns
-✅ Total implementation ~100-250 lines (target met: 237 lines)
-✅ Comprehensive test coverage
-✅ Clear documentation
-
-## Conclusion
-
-The drag preview feature has been successfully implemented with minimal code changes (~237 lines total) while maintaining consistency with the existing codebase patterns. The implementation is performant, well-integrated, and provides clear visual feedback to users during component placement and movement operations.
+All changes are additive:
+- Existing functionality preserved
+- Normal components behave as before
+- Multi-floor required components behave as before
+- Only adds new guidance for large (25-100%) items

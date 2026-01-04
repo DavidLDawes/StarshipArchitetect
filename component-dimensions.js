@@ -28,9 +28,10 @@ function calculateComponentArea(component) {
  * @param {number} floorArea - Area of one floor in m²
  * @param {number} floorLength - Floor length in meters
  * @param {number} floorWidth - Floor width in meters
+ * @param {number} numFloorsSelected - Number of floors selected by user (defaults to calculated minimum)
  * @returns {object} Options and metadata
  */
-function generateComponentDimensionOptions(component, floorArea, floorLength, floorWidth) {
+function generateComponentDimensionOptions(component, floorArea, floorLength, floorWidth, numFloorsSelected = null) {
     const componentArea = calculateComponentArea(component);
     const options = [];
     const seen = new Set();
@@ -41,8 +42,9 @@ function generateComponentDimensionOptions(component, floorArea, floorLength, fl
     const isMultiFloor = componentArea > floorArea;
     const floorsNeeded = Math.ceil(componentArea / floorArea);
 
-    // Calculate area per floor for multi-floor components
-    const areaPerFloor = isMultiFloor ? componentArea / floorsNeeded : componentArea;
+    // Calculate area per floor based on SELECTED floors (or calculated minimum)
+    const effectiveFloorCount = numFloorsSelected || (isMultiFloor ? floorsNeeded : 1);
+    const areaPerFloor = componentArea / effectiveFloorCount;
 
     // Minimum dimension - use 1m for small components, 5m for larger
     const minDim = isSmall ? 1 : 5;
@@ -76,8 +78,11 @@ function generateComponentDimensionOptions(component, floorArea, floorLength, fl
             return;
         }
 
+        // Append "(per floor)" to label if multiple floors selected
+        const finalLabel = effectiveFloorCount > 1 ? `${label} (per floor)` : label;
+
         seen.add(key);
-        options.push({ length, width, label });
+        options.push({ length, width, label: finalLabel });
     }
 
     // 1. Floor dimension-based options (ALWAYS INCLUDE WHEN APPLICABLE)
@@ -172,6 +177,7 @@ function generateComponentDimensionOptions(component, floorArea, floorLength, fl
         isLarge,
         isMultiFloor,
         floorsNeeded,
-        areaPerFloor
+        areaPerFloor,
+        effectiveFloorCount
     };
 }

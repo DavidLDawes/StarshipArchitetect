@@ -98,7 +98,7 @@ function showSelectionInstructions() {
         instructions.className = 'placement-instructions';
         document.body.appendChild(instructions);
     }
-    instructions.textContent = 'Click to move | R/L to rotate | Delete to remove | Escape to cancel';
+    instructions.textContent = 'Drag edges to resize | Click to move | R/L to rotate | Delete to remove | Escape to cancel';
     instructions.classList.remove('hidden');
 }
 

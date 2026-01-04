@@ -33,7 +33,12 @@
 
         <!-- Ship Stats Section (hidden until CSV loaded) -->
         <section id="stats-section" class="card hidden">
-            <h2>📊 Ship Statistics</h2>
+            <div class="section-header-row">
+                <h2>📊 Ship Statistics</h2>
+                <button id="share-button" class="btn-share" title="Copy shareable URL to clipboard">
+                    📋 Share Design
+                </button>
+            </div>
             <div class="stats-grid">
                 <div class="stat-item">
                     <span class="stat-label">Total Tonnage</span>
@@ -127,6 +132,10 @@
                 <!-- Stats populated dynamically -->
             </div>
 
+            <div id="modal-area-display" class="modal-area-display">
+                <!-- Area info populated dynamically -->
+            </div>
+
             <div class="modal-body">
                 <div class="modal-row">
                     <label for="component-dimensions">Dimensions:</label>
@@ -144,6 +153,7 @@
 
                 <!-- Multi-floor section for large components -->
                 <div id="multi-floor-section" class="multi-floor-section hidden">
+                    <div id="floor-selection-hint" class="floor-selection-hint hidden"></div>
                     <p class="multi-floor-notice">
                         ⚠️ This component requires <strong id="floors-needed">2</strong> floors.
                         Select which floors to span:
@@ -168,6 +178,7 @@
     <script src="component-dimensions.js"></script>
     <script src="placement-logic.js"></script>
     <script src="component-selection.js"></script>
+    <script src="component-resize.js"></script>
     <script src="undo-redo.js"></script>
     <script src="drag-preview.js"></script>
     <script src="placement-controller.js"></script>

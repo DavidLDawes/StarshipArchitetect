@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>URL Loading Test - Starship Architect</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: #0a0a1a;
+            color: #e8eaf6;
+        }
+        h1 {
+            color: #00d4ff;
+        }
+        .test-section {
+            background: rgba(20, 25, 50, 0.85);
+            border: 1px solid rgba(100, 120, 200, 0.3);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+        .test-link {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, #00d4ff 0%, #7b2fff 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            margin: 0.5rem;
+            font-weight: 600;
+            transition: transform 0.15s ease;
+        }
+        .test-link:hover {
+            transform: scale(1.05);
+        }
+        code {
+            background: rgba(30, 35, 60, 0.9);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-family: 'Consolas', monospace;
+            font-size: 0.9rem;
+            display: inline-block;
+            margin: 0.5rem 0;
+        }
+        .url-display {
+            background: rgba(30, 35, 60, 0.9);
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            word-break: break-all;
+            font-family: 'Consolas', monospace;
+            font-size: 0.85rem;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+        .note {
+            background: rgba(123, 47, 255, 0.2);
+            padding: 1rem;
+            border-radius: 8px;
+            border-left: 4px solid #7b2fff;
+            margin: 1rem 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🚀 Starship Architect - URL Loading Tests</h1>
+
+    <div class="test-section">
+        <h2>Test 1: Simple CSV Data</h2>
+        <p>Click the link below to test loading a simple CSV with 2 components:</p>
+        <a href="index.html?csv=Category%2CItem%2CTons%2CCost%0AEngine%2CManeuver%20Drive%2C75%2C1000%0APower%2CPower%20Plant%2C50%2C800" class="test-link" target="_blank">
+            🔗 Test Simple CSV (2 components)
+        </a>
+
+        <div class="note">
+            <strong>Expected Result:</strong>
+            <ul>
+                <li>Page loads without file upload dialog</li>
+                <li>Shows 2 components (Maneuver Drive 75t, Power Plant 50t)</li>
+                <li>Total tonnage: 125 tons</li>
+                <li>Floor configuration section visible</li>
+                <li>Share button appears and can copy URL</li>
+            </ul>
+        </div>
+
+        <details>
+            <summary>Show URL</summary>
+            <div class="url-display">
+                index.html?csv=Category%2CItem%2CTons%2CCost%0AEngine%2CManeuver%20Drive%2C75%2C1000%0APower%2CPower%20Plant%2C50%2C800
+            </div>
+        </details>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 2: Full Sample Ship CSV</h2>
+        <p>Click the link below to test loading the complete sample ship design (23 components):</p>
+        <a href="#" id="full-csv-link" class="test-link" target="_blank">
+            🔗 Test Full Sample Ship CSV (23 components)
+        </a>
+
+        <div class="note">
+            <strong>Expected Result:</strong>
+            <ul>
+                <li>Page loads with all 23 components from sample-ship.csv</li>
+                <li>Total tonnage: 1000 tons</li>
+                <li>Total cost: 366.1 MCr</li>
+                <li>All components visible in components list</li>
+                <li>Can configure floors and place components normally</li>
+            </ul>
+        </div>
+
+        <details>
+            <summary>Show Generated URL (click "Test Full Sample Ship CSV" button first)</summary>
+            <div class="url-display" id="full-url-display">
+                URL will appear here after clicking the test button...
+            </div>
+        </details>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 3: Invalid CSV Data</h2>
+        <p>Click the link below to test error handling with malformed CSV:</p>
+        <a href="index.html?csv=invalid%20data%20here" class="test-link" target="_blank">
+            🔗 Test Invalid CSV (should show error)
+        </a>
+
+        <div class="note">
+            <strong>Expected Result:</strong>
+            <ul>
+                <li>Shows error alert about invalid CSV</li>
+                <li>Falls back to file upload dialog</li>
+                <li>No errors in console (except the caught error)</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 4: No URL Parameter</h2>
+        <p>Click the link below to test normal file upload flow:</p>
+        <a href="index.html" class="test-link" target="_blank">
+            🔗 Test Normal File Upload
+        </a>
+
+        <div class="note">
+            <strong>Expected Result:</strong>
+            <ul>
+                <li>Normal file upload dialog appears</li>
+                <li>No errors in console</li>
+                <li>Can upload CSV file normally</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Instructions for Testing</h2>
+        <ol>
+            <li>Click each test link to open the app in a new tab</li>
+            <li>Verify the expected results listed for each test</li>
+            <li>Check browser console (F12) for any errors</li>
+            <li>For Test 2, try clicking the "Share Design" button to verify URL generation works</li>
+            <li>Copy the shared URL and paste it in a new tab to verify it loads correctly</li>
+        </ol>
+    </div>
+
+    <script>
+        // Generate the full CSV link dynamically
+        const csvData = `Category,Item,Tons,Cost
+Hull,Standard Hull,1000,80
+Hull,Hull Configuration,0,5
+Hull,Armor (TL 13),10,4
+Drive,Maneuver Drive-4,41,84
+Drive,Jump Drive-2,50,75
+Power,Power Plant-4,43,86
+Fuel,Jump Fuel (2 parsecs),200,0
+Fuel,Power Plant Fuel (4 weeks),10,0
+Bridge,Bridge,20,5
+Bridge,Computer/20,0,5
+Computer,Software/Jump Control/2,0,0.2
+Computer,Software/Maneuver/0,0,0
+Computer,Software/Library,0,0
+Sensors,Basic Military Sensors,2,1
+Crew,Staterooms x10,40,5
+Crew,Emergency Low Berths x10,10,10
+Cargo,Cargo Hold,550,0
+Weapons,Triple Turret (Beam Lasers),1,4
+Weapons,Triple Turret (Sandcasters),1,0.75
+Weapons,Ammunition (50 canisters),2,0.05
+Systems,Fuel Scoops,0,1
+Systems,Fuel Processor (40 tons/day),2,0.1
+Total,Total,1000,366.1`;
+
+        const encodedCsv = encodeURIComponent(csvData);
+        const fullUrl = `index.html?csv=${encodedCsv}`;
+
+        document.getElementById('full-csv-link').href = fullUrl;
+        document.getElementById('full-url-display').textContent = fullUrl;
+
+        console.log('Full CSV URL length:', fullUrl.length, 'characters');
+    </script>
+</body>
+</html>
