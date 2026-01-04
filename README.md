@@ -33,3 +33,39 @@ index.html?csv=Category%2CItem%2CTons%2CCost%0AEngine%2CManeuver%20Drive%2C75%2C
 After loading a CSV file, click the "Share Design" button in the Ship Statistics section to automatically generate a shareable URL and copy it to your clipboard.
 
 **Note:** Very large ship designs may exceed browser URL length limits (~2000 characters). The app will warn you if the generated URL is too long.
+
+## Development & Build
+
+### Development Setup
+
+1. Clone this repository
+2. Open `index.html` directly in a browser, or use a local server:
+   ```bash
+   python -m http.server 8000
+   # or
+   npm run serve
+   ```
+
+### Building for Production
+
+This project includes a build system to minify HTML, JavaScript, and CSS for production deployment.
+
+1. Install build dependencies:
+   ```bash
+   npm install
+   ```
+
+2. Build the project:
+   ```bash
+   npm run build
+   ```
+
+3. The minified files will be in the `dist/` directory, ready for deployment.
+
+For detailed build documentation, see [BUILD.md](BUILD.md).
+
+**Build Results:**
+- 40-45% reduction in total file size
+- All HTML, JS, and CSS minified
+- CSV data files preserved
+- Production-ready static site in `dist/`

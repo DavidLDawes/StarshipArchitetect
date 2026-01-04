@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zero-Ton Filtering Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #0d1117;
+            color: #c9d1d9;
+        }
+        .test-section {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .test-section h2 {
+            margin-top: 0;
+            color: #58a6ff;
+        }
+        .result {
+            background: #0d1117;
+            border-left: 3px solid #238636;
+            padding: 10px;
+            margin-top: 10px;
+            font-family: 'Courier New', monospace;
+        }
+        .result.fail {
+            border-left-color: #da3633;
+        }
+        pre {
+            background: #0d1117;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        button {
+            background: #238636;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #2ea043;
+        }
+    </style>
+</head>
+<body>
+    <h1>Zero-Ton Item Filtering Tests</h1>
+
+    <div class="test-section">
+        <h2>Test 1: CSV with Category Header Row (0 tons)</h2>
+        <p>Tests filtering of "Category, Item, 0, 0" header row</p>
+        <button onclick="runTest1()">Run Test 1</button>
+        <div id="result1"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 2: CSV with Zero-Ton Software Items</h2>
+        <p>Tests filtering of software and other 0-ton items</p>
+        <button onclick="runTest2()">Run Test 2</button>
+        <div id="result2"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 3: CSV with Mixed Valid and Zero-Ton Items</h2>
+        <p>Tests that valid items are kept while zero-ton items are filtered</p>
+        <button onclick="runTest3()">Run Test 3</button>
+        <div id="result3"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 4: CSV with All Zero-Ton Items</h2>
+        <p>Tests that an error is thrown when all items are zero tons</p>
+        <button onclick="runTest4()">Run Test 4</button>
+        <div id="result4"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Test 5: Full Destroyer CSV (from user example)</h2>
+        <p>Tests real-world CSV with multiple zero-ton items</p>
+        <button onclick="runTest5()">Run Test 5</button>
+        <div id="result5"></div>
+    </div>
+
+    <script>
+        // Define constant needed by floor-utils.js
+        const SQM_PER_TON = 14;
+    </script>
+    <script src="csv-parser.js"></script>
+    <script src="floor-utils.js"></script>
+    <script>
+        // Mock shipData for testing
+        let shipData = {
+            totalTons: 0,
+            totalCost: 0,
+            components: [],
+            numFloors: 4,
+            floorLength: 30,
+            ceilingHeight: 2.5,
+            componentPlacements: {}
+        };
+
+        // Simplified version of loadCsvFromString for testing
+        function testLoadCsvFromString(csvString, testName) {
+            try {
+                const parsed = parseCSV(csvString);
+
+                if (!parsed.components || parsed.components.length === 0) {
+                    throw new Error('No valid components found in CSV data');
+                }
+
+                // Filter out zero-ton items (they don't need physical placement)
+                const originalCount = parsed.components.length;
+                const filteredComponents = parsed.components.filter(component => {
+                    // Remove items with 0 tons (or invalid/negative values)
+                    if (!component.tons || component.tons <= 0) {
+                        console.log(`${testName}: Skipping zero-ton item: ${component.category} - ${component.item} (${component.tons} tons)`);
+                        return false;
+                    }
+                    return true;
+                });
+
+                // Log if any items were filtered out
+                if (filteredComponents.length < originalCount) {
+                    console.log(`${testName}: Filtered out ${originalCount - filteredComponents.length} zero-ton items`);
+                }
+
+                // Check if we have any valid components left
+                if (filteredComponents.length === 0) {
+                    throw new Error('No valid components found after filtering (all items had 0 tons)');
+                }
+
+                return {
+                    success: true,
+                    originalCount,
+                    filteredCount: filteredComponents.length,
+                    components: filteredComponents,
+                    totalTons: parsed.totalTons,
+                    totalCost: parsed.totalCost
+                };
+            } catch (error) {
+                return {
+                    success: false,
+                    error: error.message
+                };
+            }
+        }
+
+        function displayResult(elementId, result, expected) {
+            const element = document.getElementById(elementId);
+            let html = '<div class="result">';
+
+            if (result.success === expected.success) {
+                html += '<strong style="color: #3fb950;">✓ PASSED</strong><br>';
+            } else {
+                html += '<strong style="color: #f85149;">✗ FAILED</strong><br>';
+            }
+
+            if (result.success) {
+                html += `<br>Original count: ${result.originalCount}`;
+                html += `<br>Filtered count: ${result.filteredCount}`;
+                html += `<br>Items removed: ${result.originalCount - result.filteredCount}`;
+                html += `<br>Total tons: ${result.totalTons}`;
+                html += `<br><br><strong>Components:</strong><pre>`;
+                result.components.forEach(c => {
+                    html += `${c.category}: ${c.item} (${c.tons} tons)\n`;
+                });
+                html += '</pre>';
+
+                if (expected.filteredCount && result.filteredCount !== expected.filteredCount) {
+                    html += `<br><strong style="color: #f85149;">Expected ${expected.filteredCount} components, got ${result.filteredCount}</strong>`;
+                }
+            } else {
+                html += `<br>Error: ${result.error}`;
+                if (expected.errorContains && result.error.includes(expected.errorContains)) {
+                    html += `<br><strong style="color: #3fb950;">Error message is correct</strong>`;
+                }
+            }
+
+            html += '</div>';
+            element.innerHTML = html;
+        }
+
+        function runTest1() {
+            const csv = `Category,Item,Tons,Cost
+Category,Item,0,0
+Engines,Power Plant,100,200
+Cargo,Cargo Bay,50,0`;
+
+            const result = testLoadCsvFromString(csv, 'Test 1');
+            displayResult('result1', result, {
+                success: true,
+                filteredCount: 2
+            });
+        }
+
+        function runTest2() {
+            const csv = `Category,Item,Tons,Cost
+Computer,Software/Jump Control/2,0,0.2
+Computer,Software/Maneuver/0,0,0
+Computer,Software/Library,0,0
+Systems,Fuel Scoops,0,1
+Engines,Power Plant,100,200`;
+
+            const result = testLoadCsvFromString(csv, 'Test 2');
+            displayResult('result2', result, {
+                success: true,
+                filteredCount: 1
+            });
+        }
+
+        function runTest3() {
+            const csv = `Category,Item,Tons,Cost
+Hull,Standard Hull,1000,80
+Hull,Hull Configuration,0,5
+Drive,Maneuver Drive-4,41,84
+Computer,Software/Jump Control/2,0,0.2
+Bridge,Bridge,20,5
+Computer,Software/Library,0,0
+Cargo,Cargo Hold,550,0`;
+
+            const result = testLoadCsvFromString(csv, 'Test 3');
+            displayResult('result3', result, {
+                success: true,
+                filteredCount: 4
+            });
+        }
+
+        function runTest4() {
+            const csv = `Category,Item,Tons,Cost
+Category,Item,0,0
+Computer,Software/Library,0,0
+Systems,Fuel Scoops,0,1`;
+
+            const result = testLoadCsvFromString(csv, 'Test 4');
+            displayResult('result4', result, {
+                success: false,
+                errorContains: 'all items had 0 tons'
+            });
+        }
+
+        function runTest5() {
+            const csv = `Category,Item,Tons,Cost
+Hull,Standard Hull,1000,80
+Hull,Hull Configuration,0,5
+Hull,Armor (TL 13),10,4
+Drive,Maneuver Drive-4,41,84
+Drive,Jump Drive-2,50,75
+Power,Power Plant-4,43,86
+Fuel,Jump Fuel (2 parsecs),200,0
+Fuel,Power Plant Fuel (4 weeks),10,0
+Bridge,Bridge,20,5
+Bridge,Computer/20,0,5
+Computer,Software/Jump Control/2,0,0.2
+Computer,Software/Maneuver/0,0,0
+Computer,Software/Library,0,0
+Sensors,Basic Military Sensors,2,1
+Crew,Staterooms x10,40,5
+Crew,Emergency Low Berths x10,10,10
+Cargo,Cargo Hold,550,0
+Weapons,Triple Turret (Beam Lasers),1,4
+Weapons,Triple Turret (Sandcasters),1,0.75
+Weapons,Ammunition (50 canisters),2,0.05
+Systems,Fuel Scoops,0,1
+Systems,Fuel Processor (40 tons/day),2,0.1
+Total,Total,1000,366.1`;
+
+            const result = testLoadCsvFromString(csv, 'Test 5');
+            displayResult('result5', result, {
+                success: true,
+                filteredCount: 17 // Should filter out 5 zero-ton items + Total row
+            });
+        }
+    </script>
+
+    <div style="margin-top: 40px; padding: 20px; background: #161b22; border-radius: 6px;">
+        <h3>Test Summary</h3>
+        <p>These tests verify that the CSV loading logic correctly filters out items with 0 tons:</p>
+        <ul>
+            <li>Header rows with "Category, Item, 0, 0"</li>
+            <li>Software items with 0 tons</li>
+            <li>System items with 0 tons (e.g., Fuel Scoops)</li>
+            <li>Configuration items with 0 tons</li>
+            <li>Total rows (already handled by parser)</li>
+        </ul>
+        <p><strong>Expected behavior:</strong></p>
+        <ul>
+            <li>Only items with tons > 0 should remain in the component list</li>
+            <li>An error should be thrown if all items are filtered out</li>
+            <li>Console should log which items were filtered</li>
+        </ul>
+    </div>
+</body>
+</html>

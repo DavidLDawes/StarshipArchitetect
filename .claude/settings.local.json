@@ -12,7 +12,10 @@
       "Bash(start test-floor-dimensions-fix.html)",
       "Bash(node --check:*)",
       "Bash(start test-multi-floor-dimensions.html)",
-      "Bash(node -e:*)"
+      "Bash(node -e:*)",
+      "Bash(npm install)",
+      "Bash(npm run build:*)",
+      "Bash(node test-filtering-integration.js:*)"
     ]
   }
 }

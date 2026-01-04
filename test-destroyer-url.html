@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Destroyer CSV URL Test</title>
+</head>
+<body>
+    <h1>Destroyer CSV URL Generator</h1>
+    <p>Click the link below to load the Destroyer design:</p>
+
+    <a href="#" id="destroyer-link" style="font-size: 14px; word-break: break-all;">Click to generate link</a>
+
+    <script>
+        const csvData = `Destroyer, standard configuration, 28000 tons (hull code CJ, 3 sections), Tech Level E
+Category,Item,Mass,Cost
+Engines,Power Plant P-6,1400.0,2800.00
+,Maneuver Drive M-6,910.0,1820.00
+,Jump Drive J-5,1680.0,1680.00
+,Fuel,15680.0,0.00
+Fittings,Bridge,180.0,90.00
+,Very Advanced Comms & Sensors,5.0,4.00
+Weapons,Triple Pulse Laser Turret (x240),480.0,600.00
+,Fusion Gun Bay (x6),300.0,48.00
+Defenses,nuclear_damper (x4),480.0,640.00
+,meson_screen (x4),960.0,1280.00
+Berths,Low Berths (x48),24.0,2.40
+,Emergency Low (x8),8.0,8.00
+,Staterooms (x120),480.0,60.00
+,Luxury Staterooms (x4),20.0,2.40
+Rec/Health,Commissary,2.0,0.20
+,Gym,3.0,0.10
+,Spa,1.5,0.20
+,Garden,4.0,0.05
+,Kitchens,3.0,0.40
+,First Aid Station (x2),1.0,0.20
+,Autodoc,1.5,0.05
+,med_bay,4.0,2.00
+,Medical Garden,4.0,1.00
+,Library,1.0,0.10
+,Range,2.0,2.00
+,Shrine,1.0,1.00
+,Surgical Bay,5.0,8.00
+Cargo,Cargo Bay,72.0,0.00
+,Data Storage Bay,1.0,0.30
+,Secure Storage Bay,3.0,2.10
+,Cold Storage Bay,10.0,2.00
+Vehicles,Air/Raft Truck (x2),10.0,1.10
+,Pug 4x4 Armored Car,4.0,0.03
+Drones,Comms (x80),8.0,16.00
+,Sensor (x20),20.0,20.00
+,Repair (x8),80.0,8.00
+,Rescue (x2),20.0,1.00
+,War (x20),200.0,40.00
+Total,,27988.0,10320.63`;
+
+        const encodedCsv = encodeURIComponent(csvData);
+        const baseUrl = window.location.href.replace('test-destroyer-url.html', 'index.html');
+        const fullUrl = `${baseUrl}?csv=${encodedCsv}`;
+
+        const link = document.getElementById('destroyer-link');
+        link.href = fullUrl;
+        link.textContent = fullUrl;
+
+        console.log('CSV Data Length:', csvData.length);
+        console.log('Encoded Length:', encodedCsv.length);
+        console.log('Full URL Length:', fullUrl.length);
+
+        if (fullUrl.length > 2000) {
+            document.body.innerHTML += '<p style="color: orange; font-weight: bold;">⚠️ Warning: URL is ' + fullUrl.length + ' characters (browsers typically limit to ~2000). Consider using file upload instead.</p>';
+        }
+    </script>
+</body>
+</html>
+```

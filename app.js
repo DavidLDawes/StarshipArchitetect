@@ -310,10 +310,31 @@ function loadCsvFromString(csvString, source = 'unknown') {
             throw new Error('No valid components found in CSV data');
         }
 
+        // Filter out zero-ton items (they don't need physical placement)
+        const originalCount = parsed.components.length;
+        const filteredComponents = parsed.components.filter(component => {
+            // Remove items with 0 tons (or invalid/negative values)
+            if (!component.tons || component.tons <= 0) {
+                console.log(`Skipping zero-ton item: ${component.category} - ${component.item} (${component.tons} tons)`);
+                return false;
+            }
+            return true;
+        });
+
+        // Log if any items were filtered out
+        if (filteredComponents.length < originalCount) {
+            console.log(`Filtered out ${originalCount - filteredComponents.length} zero-ton items`);
+        }
+
+        // Check if we have any valid components left
+        if (filteredComponents.length === 0) {
+            throw new Error('No valid components found after filtering (all items had 0 tons)');
+        }
+
         // Update state
         shipData.totalTons = parsed.totalTons;
         shipData.totalCost = parsed.totalCost;
-        shipData.components = parsed.components;
+        shipData.components = filteredComponents;
         shipData.componentPlacements = {}; // Reset placements
 
         // Calculate default floor length
@@ -325,7 +346,7 @@ function loadCsvFromString(csvString, source = 'unknown') {
         showSections();
         refreshUI();
 
-        console.log(`Loaded ${parsed.components.length} components from ${source} (${shipData.totalTons} tons)`);
+        console.log(`Loaded ${filteredComponents.length} components from ${source} (${shipData.totalTons} tons)`);
         return true;
     } catch (error) {
         console.error(`Error loading CSV from ${source}:`, error);

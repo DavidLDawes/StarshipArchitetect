@@ -1,0 +1,24 @@
+{
+  "name": "starship-architect",
+  "version": "1.0.0",
+  "description": "Traveller Starship Architect Tool - Design and layout starship components",
+  "scripts": {
+    "build": "node build.js",
+    "clean": "node -e \"require('fs').rmSync('dist', {recursive:true, force:true})\"",
+    "serve": "python -m http.server 8000",
+    "serve:dist": "cd dist && python -m http.server 8000"
+  },
+  "keywords": [
+    "traveller",
+    "starship",
+    "architect",
+    "ship-design"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "clean-css": "^5.3.3",
+    "html-minifier": "^4.0.0",
+    "terser": "^5.26.0"
+  }
+}
