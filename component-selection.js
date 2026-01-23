@@ -168,9 +168,7 @@ function handleComponentMove(event, floorIndex) {
     newX = Math.max(0, Math.min(newX, floorLength - sel.length));
     newY = Math.max(0, Math.min(newY, floorWidth - sel.width));
 
-    // Round to nearest meter
-    newX = Math.round(newX);
-    newY = Math.round(newY);
+    // Do not round here — allow fine-grained movement when dragging selected components
 
     // Remove the old placement temporarily to check overlap
     const placement = shipData.componentPlacements[sel.componentIndex];

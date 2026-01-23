@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Debug Tonnage Parsing</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            padding: 2rem;
+        }
+        .debug { margin: 1rem 0; padding: 1rem; background: #2a2a2a; border: 1px solid #444; }
+        .success { color: #4CAF50; }
+        .error { color: #f44336; }
+    </style>
+</head>
+<body>
+    <h1>Debug Tonnage Parsing</h1>
+    <div id="output"></div>
+
+    <script src="csv-parser.js"></script>
+    <script>
+        const output = document.getElementById('output');
+
+        function log(msg, isError = false) {
+            const div = document.createElement('div');
+            div.className = 'debug ' + (isError ? 'error' : 'success');
+            div.textContent = msg;
+            output.appendChild(div);
+        }
+
+        const heavyFighterCsv = `Name,Heavy Fighter
+Hull,90 tons,98.1 MCr
+
+Category,Item,Tons,Cost (MCr)
+Hull,Heavily armed and armored fighter.,90,1.9
+Armor,bonded_superdense Rating 15,11.25,2.4`;
+
+        log('=== PARSING HEAVY FIGHTER CSV ===');
+        log('Raw CSV (first 3 lines):');
+        log(heavyFighterCsv.split('\n').slice(0, 3).join('\n'));
+        log('');
+
+        const parsed = parseCSV(heavyFighterCsv, 'Heavy_Fighter.csv');
+
+        log('=== RESULTS ===');
+        log(`Ship Name: "${parsed.shipName}"`);
+        log(`Total Tons: ${parsed.totalTons}`);
+        log(`Total Cost: ${parsed.totalCost}`);
+        log(`Components: ${parsed.components.length}`);
+
+        if (parsed.totalTons === 90) {
+            log('✅ Total tonnage is correct (90)');
+        } else {
+            log(`❌ Total tonnage is WRONG - expected 90, got ${parsed.totalTons}`, true);
+        }
+
+        if (parsed.totalCost === 98.1) {
+            log('✅ Total cost is correct (98.1)');
+        } else {
+            log(`❌ Total cost is WRONG - expected 98.1, got ${parsed.totalCost}`, true);
+        }
+    </script>
+</body>
+</html>

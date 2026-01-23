@@ -8,8 +8,9 @@
  * @param {HTMLCanvasElement} canvas - The canvas element
  * @param {number} length - Floor length in meters
  * @param {number} width - Floor width in meters
+ * @param {number} armorThickness - Armor thickness in meters (defaults to 0)
  */
-function drawFloorGrid(canvas, length, width) {
+function drawFloorGrid(canvas, length, width, armorThickness = 0) {
     const ctx = canvas.getContext('2d');
     const canvasWidth = canvas.width;
     const canvasHeight = canvas.height;
@@ -21,7 +22,32 @@ function drawFloorGrid(canvas, length, width) {
     // Calculate grid spacing (1 meter = X pixels)
     const pixelsPerMeter = canvasWidth / length;
 
-    // Draw grid lines
+    // Draw armor boundary if present
+    if (armorThickness > 0) {
+        const armorPixels = armorThickness * pixelsPerMeter;
+
+        // Draw armor as a darker border
+        ctx.fillStyle = 'rgba(150, 150, 150, 0.3)';
+
+        // Top armor
+        ctx.fillRect(0, 0, canvasWidth, armorPixels);
+
+        // Bottom armor
+        ctx.fillRect(0, canvasHeight - armorPixels, canvasWidth, armorPixels);
+
+        // Left armor
+        ctx.fillRect(0, 0, armorPixels, canvasHeight);
+
+        // Right armor
+        ctx.fillRect(canvasWidth - armorPixels, 0, armorPixels, canvasHeight);
+
+        // Draw armor boundary line
+        ctx.strokeStyle = 'rgba(180, 180, 180, 0.6)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(armorPixels, armorPixels, canvasWidth - 2 * armorPixels, canvasHeight - 2 * armorPixels);
+    }
+
+    // Draw grid lines (only in usable area if armor present)
     ctx.strokeStyle = 'rgba(100, 149, 237, 0.3)';
     ctx.lineWidth = 1;
 
@@ -43,7 +69,7 @@ function drawFloorGrid(canvas, length, width) {
         ctx.stroke();
     }
 
-    // Draw border
+    // Draw outer border
     ctx.strokeStyle = 'rgba(100, 149, 237, 0.8)';
     ctx.lineWidth = 2;
     ctx.strokeRect(1, 1, canvasWidth - 2, canvasHeight - 2);
@@ -62,6 +88,14 @@ function drawFloorGrid(canvas, length, width) {
     ctx.rotate(-Math.PI / 2);
     ctx.fillText(`${width.toFixed(1)}m`, 0, 0);
     ctx.restore();
+
+    // Armor thickness label (if armor present)
+    if (armorThickness > 0) {
+        ctx.fillStyle = 'rgba(200, 200, 200, 0.9)';
+        ctx.font = '12px Inter, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(`Armor: ${armorThickness.toFixed(2)}m`, 10, 20);
+    }
 }
 
 /**
@@ -73,10 +107,11 @@ function drawFloorGrid(canvas, length, width) {
  * @param {Object} placements - Component placements data (defaults to global shipData.componentPlacements)
  * @param {Array} components - Components array (defaults to global shipData.components)
  * @param {Object} selectedPlacement - Currently selected placement for highlighting (defaults to global uiState.selectedPlacement)
+ * @param {number} armorThickness - Armor thickness in meters (defaults to global shipData.armorThickness)
  */
-function drawFloorWithComponents(canvas, floorIndex, length, width, placements = shipData.componentPlacements, components = shipData.components, selectedPlacement = uiState.selectedPlacement) {
-    // First draw the base grid
-    drawFloorGrid(canvas, length, width);
+function drawFloorWithComponents(canvas, floorIndex, length, width, placements = shipData.componentPlacements, components = shipData.components, selectedPlacement = uiState.selectedPlacement, armorThickness = shipData.armorThickness) {
+    // First draw the base grid with armor
+    drawFloorGrid(canvas, length, width, armorThickness);
 
     const ctx = canvas.getContext('2d');
     const canvasWidth = canvas.width;

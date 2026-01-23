@@ -71,30 +71,36 @@ function placeComponentOnCanvas(event, floorIndex) {
     const compLength = data.length;
     const compWidth = data.width;
 
+    // Armor boundary
+    const armorThickness = shipData.armorThickness || 0;
+
     // Calculate initial position (center component on click)
     let x = clickX - compLength / 2;
     let y = clickY - compWidth / 2;
 
-    // Snap to edges
-    if (clickX <= compLength) {
-        x = 0;
-    } else if (clickX >= floorLength - compLength) {
-        x = floorLength - compLength;
+    // Snap to edges (respecting armor boundary)
+    // Use half-size threshold so snapping is centered-based: snap when the click
+    // is within half the component dimension of the inner armor edge.
+    const halfLength = compLength / 2;
+    const halfWidth = compWidth / 2;
+
+    if (clickX <= armorThickness + halfLength) {
+        x = armorThickness;
+    } else if (clickX >= floorLength - armorThickness - halfLength) {
+        x = floorLength - compLength - armorThickness;
     }
 
-    if (clickY <= compWidth) {
-        y = 0;
-    } else if (clickY >= floorWidth - compWidth) {
-        y = floorWidth - compWidth;
+    if (clickY <= armorThickness + halfWidth) {
+        y = armorThickness;
+    } else if (clickY >= floorWidth - armorThickness - halfWidth) {
+        y = floorWidth - compWidth - armorThickness;
     }
 
-    // Ensure component fits within floor bounds
-    x = Math.max(0, Math.min(x, floorLength - compLength));
-    y = Math.max(0, Math.min(y, floorWidth - compWidth));
+    // Ensure component fits within usable area (respecting armor boundary)
+    x = Math.max(armorThickness, Math.min(x, floorLength - compLength - armorThickness));
+    y = Math.max(armorThickness, Math.min(y, floorWidth - compWidth - armorThickness));
 
-    // Round to nearest meter for clean grid alignment
-    x = Math.round(x);
-    y = Math.round(y);
+    // Do not round here — allow placement at sub-meter precision
 
     // Try to find a valid position, adjusting if there's overlap
     const position = findValidPosition(

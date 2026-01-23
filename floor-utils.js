@@ -139,6 +139,39 @@ function generateDimensionOptionsWithStep(floorArea, step) {
 }
 
 /**
+ * Calculate armor thickness per floor
+ * Armor is distributed as a uniform layer on the exterior walls of each floor
+ * @param {number} totalArmorTons - Total armor tonnage
+ * @param {number} numFloors - Number of floors
+ * @param {number} floorLength - Floor length in meters
+ * @param {number} floorArea - Floor area in square meters
+ * @param {number} ceilingHeight - Ceiling height in meters
+ * @returns {number} Armor thickness in meters
+ */
+function calculateArmorThickness(totalArmorTons, numFloors, floorLength, floorArea, ceilingHeight) {
+    if (totalArmorTons <= 0 || numFloors <= 0) {
+        return 0;
+    }
+
+    // Armor per floor
+    const armorTonsPerFloor = totalArmorTons / numFloors;
+
+    // Volume of armor per floor (m³)
+    const armorVolumePerFloor = armorTonsPerFloor * SQM_PER_TON;
+
+    // Floor width
+    const floorWidth = floorArea / floorLength;
+
+    // Perimeter of floor
+    const perimeter = 2 * (floorLength + floorWidth);
+
+    // Armor thickness = volume / (perimeter * height)
+    const thickness = armorVolumePerFloor / (perimeter * ceilingHeight);
+
+    return thickness;
+}
+
+/**
  * Get current floor dimensions from global shipData
  * Centralizes the repeated calculation pattern used throughout the codebase
  * @returns {Object} Object containing { totalArea, floorArea, floorWidth, floorLength }

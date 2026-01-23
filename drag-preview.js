@@ -45,8 +45,19 @@ function drawPreview(canvas, floorIndex, length, width) {
     const pw = previewState.length * pixelsPerMeter;
     const ph = previewState.width * pixelsPerMeter;
 
-    // Check if this position would be valid (no overlap, within bounds)
-    const isValid = !checkOverlap(
+    // Check if this position would be valid: within usable area (armor) and no overlap
+    const armorThickness = shipData.armorThickness || 0;
+    const within = isWithinUsableArea(
+        previewState.x,
+        previewState.y,
+        previewState.length,
+        previewState.width,
+        length,
+        width,
+        armorThickness
+    );
+
+    const noOverlap = !checkOverlap(
         floorIndex,
         previewState.x,
         previewState.y,
@@ -54,6 +65,8 @@ function drawPreview(canvas, floorIndex, length, width) {
         previewState.width,
         previewState.excludeComponentIndex
     );
+
+    const isValid = within && noOverlap;
 
     // Preview colors based on validity
     const fillColor = isValid ? 'rgba(0, 255, 100, 0.3)' : 'rgba(255, 0, 0, 0.3)';
@@ -135,13 +148,13 @@ function handleCanvasMouseMove(event, floorIndex) {
     let previewX = mouseX - compLength / 2;
     let previewY = mouseY - compWidth / 2;
 
-    // Clamp to floor bounds
-    previewX = Math.max(0, Math.min(previewX, floorLength - compLength));
-    previewY = Math.max(0, Math.min(previewY, floorWidth - compWidth));
+    // Clamp to usable area (respecting armor boundary)
+    const armorThickness = shipData.armorThickness || 0;
+    previewX = Math.max(armorThickness, Math.min(previewX, floorLength - compLength - armorThickness));
+    previewY = Math.max(armorThickness, Math.min(previewY, floorWidth - compWidth - armorThickness));
 
-    // Round to nearest meter for grid alignment
-    previewX = Math.round(previewX);
-    previewY = Math.round(previewY);
+    // Do not snap to 1m grid here — allow fine-grained (sub-meter) preview movement
+    // Keep previewX/previewY as floating values for pixel-precise placement
 
     // Update preview state
     previewState.isActive = true;

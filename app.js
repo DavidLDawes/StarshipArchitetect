@@ -13,9 +13,12 @@ const DEFAULT_CEILING_HEIGHT = 2.5; // Default ceiling height in meters
 // State
 // ========================================
 let shipData = {
+    shipName: '',
     totalTons: 0,
     totalCost: 0,
     components: [],
+    armorTons: 0,           // Total armor tonnage
+    armorThickness: 0,      // Armor thickness in meters (calculated per floor)
     numFloors: 4,
     floorLength: 30,
     ceilingHeight: DEFAULT_CEILING_HEIGHT,
@@ -39,6 +42,7 @@ const elements = {
     fileName: document.getElementById('file-name'),
 
     statsSection: document.getElementById('stats-section'),
+    shipName: document.getElementById('ship-name'),
     totalTons: document.getElementById('total-tons'),
     totalSqm: document.getElementById('total-sqm'),
     totalCost: document.getElementById('total-cost'),
@@ -78,6 +82,14 @@ function showSections() {
  */
 function updateStats() {
     const { totalArea } = getCurrentFloorDimensions();
+
+    // Update ship name if available
+    if (shipData.shipName) {
+        elements.shipName.textContent = shipData.shipName;
+        elements.shipName.style.display = 'block';
+    } else {
+        elements.shipName.style.display = 'none';
+    }
 
     elements.totalTons.textContent = shipData.totalTons.toLocaleString();
     elements.totalSqm.textContent = Math.round(totalArea).toLocaleString();
@@ -301,18 +313,31 @@ function refreshUI() {
  * Load and process CSV data from a string
  * @param {string} csvString - CSV content as string
  * @param {string} source - Source description for logging (e.g., "URL", "file")
+ * @param {string} filename - Optional filename (used for ship name)
  */
-function loadCsvFromString(csvString, source = 'unknown') {
+function loadCsvFromString(csvString, source = 'unknown', filename = '') {
     try {
-        const parsed = parseCSV(csvString);
+        const parsed = parseCSV(csvString, filename);
 
         if (!parsed.components || parsed.components.length === 0) {
             throw new Error('No valid components found in CSV data');
         }
 
-        // Filter out zero-ton items (they don't need physical placement)
+        // Extract armor tonnage and filter out items that don't need manual placement
+        let armorTons = 0;
         const originalCount = parsed.components.length;
         const filteredComponents = parsed.components.filter(component => {
+            // Remove Hull category - the hull IS the ship itself
+            if (component.category.toLowerCase() === 'hull') {
+                console.log(`Skipping Hull component (hull is the ship structure itself): ${component.item} (${component.tons} tons)`);
+                return false;
+            }
+            // Extract and remove Armor category - armor is applied as boundary layer
+            if (component.category.toLowerCase() === 'armor') {
+                armorTons += component.tons;
+                console.log(`Extracting Armor component (will be applied as boundary layer): ${component.item} (${component.tons} tons)`);
+                return false;
+            }
             // Remove items with 0 tons (or invalid/negative values)
             if (!component.tons || component.tons <= 0) {
                 console.log(`Skipping zero-ton item: ${component.category} - ${component.item} (${component.tons} tons)`);
@@ -323,7 +348,7 @@ function loadCsvFromString(csvString, source = 'unknown') {
 
         // Log if any items were filtered out
         if (filteredComponents.length < originalCount) {
-            console.log(`Filtered out ${originalCount - filteredComponents.length} zero-ton items`);
+            console.log(`Filtered out ${originalCount - filteredComponents.length} items (Hull, Armor: ${armorTons} tons, and zero-ton items)`);
         }
 
         // Check if we have any valid components left
@@ -332,15 +357,20 @@ function loadCsvFromString(csvString, source = 'unknown') {
         }
 
         // Update state
+        shipData.shipName = parsed.shipName || '';
         shipData.totalTons = parsed.totalTons;
         shipData.totalCost = parsed.totalCost;
         shipData.components = filteredComponents;
+        shipData.armorTons = armorTons;
         shipData.componentPlacements = {}; // Reset placements
 
         // Calculate default floor length
         const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
         const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
         shipData.floorLength = calculateDefaultFloorLength(floorArea);
+
+        // Calculate armor thickness per floor
+        shipData.armorThickness = calculateArmorThickness(armorTons, shipData.numFloors, shipData.floorLength, floorArea, shipData.ceilingHeight);
 
         // Show sections and refresh UI
         showSections();
@@ -390,10 +420,25 @@ function checkForUrlCsvData() {
 /**
  * Convert components array back to CSV string format
  * @param {Array} components - Array of component objects
+ * @param {string} shipName - Optional ship name to include in CSV
+ * @param {number} totalTons - Total tonnage for small craft format
+ * @param {number} totalCost - Total cost for small craft format
  * @returns {string} CSV formatted string
  */
-function generateCsvString(components) {
-    let csv = 'Category,Item,Tons,Cost\n';
+function generateCsvString(components, shipName = '', totalTons = 0, totalCost = 0) {
+    let csv = '';
+
+    // If ship name exists, use small craft format
+    if (shipName) {
+        csv += `Name,${shipName}\n`;
+        csv += `Hull,${totalTons} tons,${totalCost} MCr\n`;
+        csv += '\n';
+        csv += 'Category,Item,Tons,Cost (MCr)\n';
+    } else {
+        // Standard format
+        csv += 'Category,Item,Tons,Cost\n';
+    }
+
     components.forEach(c => {
         // Escape fields that contain commas by wrapping in quotes
         const category = c.category.includes(',') ? `"${c.category}"` : c.category;
@@ -414,7 +459,7 @@ function generateShareableUrl() {
 
     try {
         // Convert components back to CSV format
-        const csvString = generateCsvString(shipData.components);
+        const csvString = generateCsvString(shipData.components, shipData.shipName, shipData.totalTons, shipData.totalCost);
 
         // URL encode the CSV data
         const encodedCsv = encodeURIComponent(csvString);
@@ -461,7 +506,7 @@ elements.csvInput.addEventListener('change', function (event) {
     const reader = new FileReader();
     reader.onload = function (e) {
         try {
-            loadCsvFromString(e.target.result, `file: ${file.name}`);
+            loadCsvFromString(e.target.result, `file: ${file.name}`, file.name);
         } catch (error) {
             alert('Error parsing CSV file: ' + error.message);
         }
@@ -480,6 +525,9 @@ elements.floorSlider.addEventListener('input', function (event) {
     const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
     shipData.floorLength = calculateDefaultFloorLength(floorArea);
 
+    // Recalculate armor thickness
+    shipData.armorThickness = calculateArmorThickness(shipData.armorTons, shipData.numFloors, shipData.floorLength, floorArea, shipData.ceilingHeight);
+
     // Clear placements when floor count changes
     shipData.componentPlacements = {};
 
@@ -493,6 +541,12 @@ elements.floorLength.addEventListener('input', function (event) {
     const value = parseFloat(event.target.value);
     if (value >= 5) {
         shipData.floorLength = value;
+
+        // Recalculate armor thickness
+        const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
+        const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
+        shipData.armorThickness = calculateArmorThickness(shipData.armorTons, shipData.numFloors, shipData.floorLength, floorArea, shipData.ceilingHeight);
+
         // Clear placements when dimensions change
         shipData.componentPlacements = {};
         refreshUI();
@@ -506,6 +560,12 @@ elements.ceilingHeight.addEventListener('input', function (event) {
     const value = parseFloat(event.target.value);
     if (value >= 2 && value <= 10) {
         shipData.ceilingHeight = value;
+
+        // Recalculate armor thickness
+        const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
+        const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
+        shipData.armorThickness = calculateArmorThickness(shipData.armorTons, shipData.numFloors, shipData.floorLength, floorArea, shipData.ceilingHeight);
+
         // Clear placements when dimensions change
         shipData.componentPlacements = {};
         refreshUI();
@@ -522,8 +582,11 @@ elements.floorDimensions.addEventListener('change', function (event) {
         elements.floorLength.value = selectedLength;
 
         // Recalculate width
-        const { floorWidth } = getCurrentFloorDimensions();
+        const { floorWidth, floorArea } = getCurrentFloorDimensions();
         elements.floorWidth.textContent = floorWidth.toFixed(1);
+
+        // Recalculate armor thickness
+        shipData.armorThickness = calculateArmorThickness(shipData.armorTons, shipData.numFloors, shipData.floorLength, floorArea, shipData.ceilingHeight);
 
         // Clear placements when dimensions change
         shipData.componentPlacements = {};

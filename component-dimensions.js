@@ -46,43 +46,44 @@ function generateComponentDimensionOptions(component, floorArea, floorLength, fl
     const effectiveFloorCount = numFloorsSelected || (isMultiFloor ? floorsNeeded : 1);
     const areaPerFloor = componentArea / effectiveFloorCount;
 
+    // Account for armor boundary: usable area is reduced by armor on all sides
+    const armorThickness = shipData.armorThickness || 0;
+    const usableFloorLength = Math.max(0, floorLength - 2 * armorThickness);
+    const usableFloorWidth = Math.max(0, floorWidth - 2 * armorThickness);
+
     // Minimum dimension - use 1m for small components, 5m for larger
     const minDim = isSmall ? 1 : 5;
 
     // Helper to add option if valid and unique
     function addOption(length, width, label) {
-        // Round to reasonable precision
-        length = Math.round(length * 10) / 10;
-        width = Math.round(width * 10) / 10;
+        // Use precise values for validation; use rounded values only for key/label
+        const preciseLength = length;
+        const preciseWidth = width;
+        const roundedLength = Math.round(preciseLength * 10) / 10;
+        const roundedWidth = Math.round(preciseWidth * 10) / 10;
 
-        const key = `${length}x${width}`;
+        const key = `${roundedLength}x${roundedWidth}`;
 
-        if (seen.has(key)) {
-            return;
-        }
-        if (length < minDim || width < minDim) {
-            return;
-        }
+        if (seen.has(key)) return;
+        if (preciseLength < minDim || preciseWidth < minDim) return;
 
-        // Round floor dimensions to same precision for fair comparison
-        const roundedFloorLength = Math.round(floorLength * 10) / 10;
-        const roundedFloorWidth = Math.round(floorWidth * 10) / 10;
+        // Round usable floor dimensions to same precision for fair comparison
+        const roundedFloorLength = Math.round(usableFloorLength * 10) / 10;
+        const roundedFloorWidth = Math.round(usableFloorWidth * 10) / 10;
 
-        if (length > roundedFloorLength || width > roundedFloorWidth) {
-            return;
-        }
+        // Validate using precise values against rounded usable floor dimensions
+        if (preciseLength > roundedFloorLength || preciseWidth > roundedFloorWidth) return;
+
         // For multi-floor components, validate against per-floor area
-        const areaCheck = length * width;
+        const areaCheck = preciseLength * preciseWidth;
         const minArea = areaPerFloor * 0.95;
-        if (areaCheck < minArea) {
-            return;
-        }
+        if (areaCheck < minArea) return;
 
         // Append "(per floor)" to label if multiple floors selected
         const finalLabel = effectiveFloorCount > 1 ? `${label} (per floor)` : label;
 
         seen.add(key);
-        options.push({ length, width, label: finalLabel });
+        options.push({ length: preciseLength, width: preciseWidth, label: finalLabel });
     }
 
     // 1. Floor dimension-based options (ALWAYS INCLUDE WHEN APPLICABLE)
@@ -92,26 +93,28 @@ function generateComponentDimensionOptions(component, floorArea, floorLength, fl
     // (e.g., "12 × 35 m (full width)" instead of generic "12 × 35 m")
     // The `seen` Set prevents duplicate dimensions, so order matters!
 
-    // Option 1: Component spans full floor width (floor width as Y dimension)
-    // Add if: componentArea / floorWidth >= 5 (minimum for X dimension)
-    const lengthForFullWidth = areaPerFloor / floorWidth;
-    if (lengthForFullWidth >= minDim) {
-        addOption(lengthForFullWidth, floorWidth, `${lengthForFullWidth.toFixed(1)} × ${floorWidth.toFixed(1)} m (full width)`);
+    // Option 1: Component spans full usable floor width (usable floor width as Y dimension)
+    if (usableFloorWidth > 0) {
+        const lengthForFullWidth = areaPerFloor / usableFloorWidth;
+        if (lengthForFullWidth >= minDim) {
+            addOption(lengthForFullWidth, usableFloorWidth, `${lengthForFullWidth.toFixed(1)} × ${usableFloorWidth.toFixed(1)} m (full width)`);
+        }
     }
 
-    // Option 2: Component spans full floor length (floor length as X dimension)
-    // Add if: componentArea / floorLength >= 5 (minimum for Y dimension)
-    const widthForFullLength = areaPerFloor / floorLength;
-    if (widthForFullLength >= minDim) {
-        addOption(floorLength, widthForFullLength, `${floorLength.toFixed(1)} × ${widthForFullLength.toFixed(1)} m (full length)`);
+    // Option 2: Component spans full usable floor length (usable floor length as X dimension)
+    if (usableFloorLength > 0) {
+        const widthForFullLength = areaPerFloor / usableFloorLength;
+        if (widthForFullLength >= minDim) {
+            addOption(usableFloorLength, widthForFullLength, `${usableFloorLength.toFixed(1)} × ${widthForFullLength.toFixed(1)} m (full length)`);
+        }
     }
 
     // 2. Floor width-based options (component spans floor width)
     for (let divisor = 1; divisor <= 4; divisor++) {
-        const width = floorWidth / divisor;
+        const width = usableFloorWidth / divisor;
         if (width >= minDim) {
             const length = areaPerFloor / width;
-            if (length <= floorLength && length >= minDim) {
+            if (length <= usableFloorLength && length >= minDim) {
                 addOption(length, width, `${length.toFixed(1)} × ${width.toFixed(1)} m`);
             }
         }
@@ -119,10 +122,10 @@ function generateComponentDimensionOptions(component, floorArea, floorLength, fl
 
     // 3. Floor length-based options (component spans floor length)
     for (let divisor = 1; divisor <= 4; divisor++) {
-        const length = floorLength / divisor;
+        const length = usableFloorLength / divisor;
         if (length >= minDim) {
             const width = areaPerFloor / length;
-            if (width <= floorWidth && width >= minDim) {
+            if (width <= usableFloorWidth && width >= minDim) {
                 addOption(length, width, `${length.toFixed(1)} × ${width.toFixed(1)} m`);
             }
         }
@@ -130,18 +133,18 @@ function generateComponentDimensionOptions(component, floorArea, floorLength, fl
 
     // 4. Square-ish option (close to square)
     const sqSide = Math.sqrt(areaPerFloor);
-    if (sqSide >= minDim && sqSide <= Math.min(floorLength, floorWidth)) {
+    if (sqSide >= minDim && sqSide <= Math.min(usableFloorLength, usableFloorWidth)) {
         addOption(sqSide, sqSide, `${sqSide.toFixed(1)} × ${sqSide.toFixed(1)} m`);
     }
 
     // 5. Multiples of 5m (or 1m for small components)
     const step = isSmall ? 1 : 5;
-    const maxLengthOpt = Math.min(floorLength, Math.ceil(areaPerFloor / step));
+    const maxLengthOpt = Math.min(usableFloorLength, Math.ceil(areaPerFloor / step));
 
     for (let l = step; l <= maxLengthOpt; l += step) {
         const w = areaPerFloor / l;
         const roundedW = Math.round(w / step) * step;
-        if (roundedW >= step && roundedW <= floorWidth) {
+        if (roundedW >= step && roundedW <= usableFloorWidth) {
             const actualArea = l * roundedW;
             // Allow slight over-sizing (up to 10% more)
             if (actualArea >= areaPerFloor && actualArea <= areaPerFloor * 1.1) {
@@ -153,11 +156,12 @@ function generateComponentDimensionOptions(component, floorArea, floorLength, fl
     // 6. If no options found, try full floor coverage (for very large components)
     if (options.length === 0 && isMultiFloor) {
         // Use full floor dimensions
-        addOption(floorLength, floorWidth, `${floorLength.toFixed(1)} × ${floorWidth.toFixed(1)} m (full floor)`);
+        // Use usable floor dimensions for full-floor option
+        addOption(usableFloorLength, usableFloorWidth, `${usableFloorLength.toFixed(1)} × ${usableFloorWidth.toFixed(1)} m (full floor)`);
 
-        // Also try 90% of floor in each dimension
-        const len90 = floorLength * 0.9;
-        const wid90 = floorWidth * 0.9;
+        // Also try 90% of usable floor in each dimension
+        const len90 = usableFloorLength * 0.9;
+        const wid90 = usableFloorWidth * 0.9;
         if (len90 * wid90 >= areaPerFloor * 0.95) {
             addOption(len90, wid90, `${len90.toFixed(1)} × ${wid90.toFixed(1)} m`);
         }

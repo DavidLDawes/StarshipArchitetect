@@ -1,0 +1,31 @@
+Name,Heavy Fighter
+Hull,90 tons,98.1 MCr
+
+Category,Item,Tons,Cost (MCr)
+Hull,Heavily armed and armored fighter.,90,1.9
+Armor,bonded_superdense Rating 15,11.25,2.4
+Drives,maneuver - Model sW (M-6),16,32.0
+,powerPlant - Model sW (P-6),10.5,26.0
+,powerPlant - Model sS (P-5),8.1,18.0
+Fuel,9.75 tons (504 hours),9.75,0.0
+Fittings,Control Cabin (2 crew),6,0.5
+,Passenger Cabin (4 passengers),6,0.3
+,Airlock,1,0.2
+,Fresher,1,0.1
+,Galley,0.5,0.1
+,Very Advanced Electronics (DM +2),5,4.0
+Weapons,Particle Beam Barbette x1 (turret),10,5.5
+,Double Beam Laser Turret x1 (turret),1,3.5
+,Double Beam Laser Turret x1 (turret),1,3.5
+Cargo,Cargo Bay (2 tons),2,0.0
+,Ship's Locker (0.6 tons),0.6,0.1
+Staff,Pilots: 1,0,0.0
+,Gunners: 2,0,0.0
+,Engineer: 1,0,0.0
+,ECM: 1,0,0.0
+,Other: 1,0,0.0
+,Total Crew: 6,0,0.0
+,,,
+TOTALS,Total Mass,89.70,
+,Hull Capacity,90,
+,Total Cost,,98.1

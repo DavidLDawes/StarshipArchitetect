@@ -4,6 +4,29 @@
  */
 
 // ========================================
+// Armor Boundary Checking
+// ========================================
+
+/**
+ * Check if a placement is within the usable area (respecting armor boundary)
+ * @param {number} x - X position in meters
+ * @param {number} y - Y position in meters
+ * @param {number} length - Component length in meters
+ * @param {number} width - Component width in meters
+ * @param {number} floorLength - Floor length in meters
+ * @param {number} floorWidth - Floor width in meters
+ * @param {number} armorThickness - Armor thickness in meters (defaults to shipData.armorThickness)
+ * @returns {boolean} True if placement is within usable area
+ */
+function isWithinUsableArea(x, y, length, width, floorLength, floorWidth, armorThickness = shipData.armorThickness) {
+    // Check if component is fully inside the armor boundary
+    return x >= armorThickness &&
+           y >= armorThickness &&
+           x + length <= floorLength - armorThickness &&
+           y + width <= floorWidth - armorThickness;
+}
+
+// ========================================
 // Overlap Detection
 // ========================================
 
@@ -47,8 +70,11 @@ function checkOverlap(floorIndex, x, y, length, width, excludeComponentIndex = -
  * @returns {object|null} {x, y} if valid position found, null otherwise
  */
 function findValidPosition(floorIndex, origX, origY, compLength, compWidth, floorLength, floorWidth, excludeComponentIndex) {
-    // First, check if original position works
-    if (!checkOverlap(floorIndex, origX, origY, compLength, compWidth, excludeComponentIndex)) {
+    const armorThickness = shipData.armorThickness || 0;
+
+    // First, check if original position works (both within usable area and no overlap)
+    if (isWithinUsableArea(origX, origY, compLength, compWidth, floorLength, floorWidth, armorThickness) &&
+        !checkOverlap(floorIndex, origX, origY, compLength, compWidth, excludeComponentIndex)) {
         return { x: origX, y: origY };
     }
 
@@ -97,19 +123,20 @@ function findValidPosition(floorIndex, origX, origY, compLength, compWidth, floo
         candidates.push({ x: comp.x - compLength, y: comp.y - compWidth });
     }
 
-    // Also try floor edges
-    candidates.push({ x: 0, y: origY });
-    candidates.push({ x: floorLength - compLength, y: origY });
-    candidates.push({ x: origX, y: 0 });
-    candidates.push({ x: origX, y: floorWidth - compWidth });
+    // Also try floor edges (respecting armor boundary)
+    candidates.push({ x: armorThickness, y: origY });
+    candidates.push({ x: floorLength - armorThickness - compLength, y: origY });
+    candidates.push({ x: origX, y: armorThickness });
+    candidates.push({ x: origX, y: floorWidth - armorThickness - compWidth });
 
     // Filter and sort candidates
     const validCandidates = candidates
         .map(pos => ({
-            x: Math.round(Math.max(0, Math.min(pos.x, floorLength - compLength))),
-            y: Math.round(Math.max(0, Math.min(pos.y, floorWidth - compWidth)))
+            x: Math.max(armorThickness, Math.min(pos.x, floorLength - armorThickness - compLength)),
+            y: Math.max(armorThickness, Math.min(pos.y, floorWidth - armorThickness - compWidth))
         }))
-        .filter(pos => !checkOverlap(floorIndex, pos.x, pos.y, compLength, compWidth, excludeComponentIndex))
+        .filter(pos => isWithinUsableArea(pos.x, pos.y, compLength, compWidth, floorLength, floorWidth, armorThickness) &&
+                      !checkOverlap(floorIndex, pos.x, pos.y, compLength, compWidth, excludeComponentIndex))
         .map(pos => ({
             ...pos,
             distance: Math.sqrt(Math.pow(pos.x - origX, 2) + Math.pow(pos.y - origY, 2))
