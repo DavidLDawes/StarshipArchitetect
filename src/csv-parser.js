@@ -149,3 +149,8 @@ function parseCSV(csvContent, filename = '') {
         shipName
     };
 }
+
+// CommonJS export for Jest (no-op in browsers where `module` is undefined)
+if (typeof module !== 'undefined') {
+    module.exports = { parseCSVLine, parseCSV };
+}

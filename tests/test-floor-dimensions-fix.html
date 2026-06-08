@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -61,15 +61,15 @@
         <p><strong>Configuration:</strong></p>
         <ul>
             <li>Component: Maneuver Drive M-3 (75 tons)</li>
-            <li>Floor dimensions: 100m × 35m (3500 m²)</li>
+            <li>Floor dimensions: 100m Ã— 35m (3500 mÂ²)</li>
             <li>Ceiling height: 2.5m</li>
         </ul>
         <p><strong>Expected:</strong></p>
         <ul>
-            <li>Component area: 75 × 14 / 2.5 = 420 m²</li>
-            <li><strong>MUST see "12.0 × 35.0 m (full width)"</strong> (420 / 35 = 12, and 12 >= 5 ✓)</li>
-            <li>Should NOT see "100.0 × 4.2 m (full length)" (4.2 < 5 ✗)</li>
-            <li>Should NOT see "168.0 × 2.5 m (ceiling height)" (168 > 100 floor length ✗)</li>
+            <li>Component area: 75 Ã— 14 / 2.5 = 420 mÂ²</li>
+            <li><strong>MUST see "12.0 Ã— 35.0 m (full width)"</strong> (420 / 35 = 12, and 12 >= 5 âœ“)</li>
+            <li>Should NOT see "100.0 Ã— 4.2 m (full length)" (4.2 < 5 âœ—)</li>
+            <li>Should NOT see "168.0 Ã— 2.5 m (ceiling height)" (168 > 100 floor length âœ—)</li>
         </ul>
         <div id="test1-result" class="result"></div>
         <h3>Generated Options:</h3>
@@ -81,14 +81,14 @@
         <p><strong>Configuration:</strong></p>
         <ul>
             <li>Component: Test Component (10 tons)</li>
-            <li>Floor dimensions: 100m × 35m (3500 m²)</li>
+            <li>Floor dimensions: 100m Ã— 35m (3500 mÂ²)</li>
             <li>Ceiling height: 2.5m</li>
         </ul>
         <p><strong>Expected:</strong></p>
         <ul>
-            <li>Component area: 10 × 14 / 2.5 = 56 m²</li>
-            <li>Should see "22.4 × 2.5 m (ceiling height)" (56 / 2.5 = 22.4, and 22.4 >= 5 ✓ AND 22.4 <= 100 ✓)</li>
-            <li>Should see "1.6 × 35.0 m (full width)" (56 / 35 = 1.6, but 1.6 < 5 ✗ for large component)</li>
+            <li>Component area: 10 Ã— 14 / 2.5 = 56 mÂ²</li>
+            <li>Should see "22.4 Ã— 2.5 m (ceiling height)" (56 / 2.5 = 22.4, and 22.4 >= 5 âœ“ AND 22.4 <= 100 âœ“)</li>
+            <li>Should see "1.6 Ã— 35.0 m (full width)" (56 / 35 = 1.6, but 1.6 < 5 âœ— for large component)</li>
         </ul>
         <div id="test2-result" class="result"></div>
         <h3>Generated Options:</h3>
@@ -100,15 +100,15 @@
         <p><strong>Configuration:</strong></p>
         <ul>
             <li>Component: Test Component (50 tons)</li>
-            <li>Floor dimensions: 100m × 35m (3500 m²)</li>
+            <li>Floor dimensions: 100m Ã— 35m (3500 mÂ²)</li>
             <li>Ceiling height: 2.5m</li>
         </ul>
         <p><strong>Expected:</strong></p>
         <ul>
-            <li>Component area: 50 × 14 / 2.5 = 280 m²</li>
-            <li>Should see "8.0 × 35.0 m (full width)" (280 / 35 = 8, and 8 >= 5 ✓)</li>
-            <li>Should NOT see "100.0 × 2.8 m (full length)" (2.8 < 5 ✗)</li>
-            <li>Should see "112.0 × 2.5 m (ceiling height)" (280 / 2.5 = 112, but 112 > 100 ✗)</li>
+            <li>Component area: 50 Ã— 14 / 2.5 = 280 mÂ²</li>
+            <li>Should see "8.0 Ã— 35.0 m (full width)" (280 / 35 = 8, and 8 >= 5 âœ“)</li>
+            <li>Should NOT see "100.0 Ã— 2.8 m (full length)" (2.8 < 5 âœ—)</li>
+            <li>Should see "112.0 Ã— 2.5 m (ceiling height)" (280 / 2.5 = 112, but 112 > 100 âœ—)</li>
         </ul>
         <div id="test3-result" class="result"></div>
         <h3>Generated Options:</h3>
@@ -126,7 +126,7 @@
             totalTons: 5000
         };
     </script>
-    <script src="component-dimensions.js"></script>
+    <script src="../src/component-dimensions.js"></script>
 
     <script>
         let passCount = 0;
@@ -137,7 +137,7 @@
 
             console.log(`\n=== Test ${testNum}: ${component.name} ===`);
             console.log(`  Component tons: ${component.tons}`);
-            console.log(`  Floor: ${floorLength}m × ${floorWidth}m (${floorArea} m²)`);
+            console.log(`  Floor: ${floorLength}m Ã— ${floorWidth}m (${floorArea} mÂ²)`);
 
             const result = generateComponentDimensionOptions(
                 component,
@@ -146,7 +146,7 @@
                 floorWidth
             );
 
-            console.log(`  Component area: ${result.componentArea} m²`);
+            console.log(`  Component area: ${result.componentArea} mÂ²`);
             console.log(`  Options generated: ${result.options.length}`);
 
             const resultDiv = document.getElementById(`test${testNum}-result`);
@@ -156,7 +156,7 @@
             optionsDiv.textContent = result.options
                 .map((opt, idx) => {
                     const area = (opt.length * opt.width).toFixed(1);
-                    return `${idx + 1}. ${opt.label}\n   → ${opt.length}m × ${opt.width}m = ${area} m²`;
+                    return `${idx + 1}. ${opt.label}\n   â†’ ${opt.length}m Ã— ${opt.width}m = ${area} mÂ²`;
                 })
                 .join('\n\n');
 
@@ -185,21 +185,21 @@
 
             // Display results
             const resultHTML = results.map(r => {
-                const icon = r.passed ? '✓' : '✗';
+                const icon = r.passed ? 'âœ“' : 'âœ—';
                 const style = r.passed ? 'color: green;' : 'color: red; font-weight: bold;';
                 return `${icon} ${r.description}<br>` +
                        `   Expected: ${r.expected}, Actual: ${r.actual}`;
             }).join('<br><br>');
 
             resultDiv.className = allPassed ? 'result pass' : 'result fail';
-            resultDiv.innerHTML = `<strong>${allPassed ? '✓ PASS' : '✗ FAIL'}</strong><br><br>${resultHTML}`;
+            resultDiv.innerHTML = `<strong>${allPassed ? 'âœ“ PASS' : 'âœ— FAIL'}</strong><br><br>${resultHTML}`;
 
             if (allPassed) {
                 passCount++;
-                console.log('  ✓ PASS');
+                console.log('  âœ“ PASS');
             } else {
                 failCount++;
-                console.log('  ✗ FAIL');
+                console.log('  âœ— FAIL');
             }
 
             return allPassed;
@@ -215,19 +215,19 @@
                 100, 35,
                 [
                     {
-                        description: '"12.0 × 35.0 m (full width)" option',
+                        description: '"12.0 Ã— 35.0 m (full width)" option',
                         labelContains: '(full width)',
                         length: 12,
                         width: 35,
                         shouldExist: true
                     },
                     {
-                        description: '"100.0 × 4.2 m (full length)" option',
+                        description: '"100.0 Ã— 4.2 m (full length)" option',
                         labelContains: '(full length)',
                         shouldExist: false
                     },
                     {
-                        description: '"168.0 × 2.5 m (ceiling height)" option',
+                        description: '"168.0 Ã— 2.5 m (ceiling height)" option',
                         labelContains: '(ceiling height)',
                         shouldExist: false
                     }
@@ -254,7 +254,7 @@
                 100, 35,
                 [
                     {
-                        description: '"8.0 × 35.0 m (full width)" option',
+                        description: '"8.0 Ã— 35.0 m (full width)" option',
                         labelContains: '(full width)',
                         length: 8,
                         width: 35,
@@ -279,8 +279,8 @@
                     <strong>${passCount} / ${total} tests passed</strong>
                 </p>
                 ${allPassed ?
-                    '<p style="color: green; font-weight: bold;">✓ All tests passed! The floor dimension options fix is working correctly.</p>' :
-                    '<p style="color: red; font-weight: bold;">✗ Some tests failed. Please review the results above.</p>'
+                    '<p style="color: green; font-weight: bold;">âœ“ All tests passed! The floor dimension options fix is working correctly.</p>' :
+                    '<p style="color: red; font-weight: bold;">âœ— Some tests failed. Please review the results above.</p>'
                 }
             `;
 
@@ -291,3 +291,4 @@
     </script>
 </body>
 </html>
+

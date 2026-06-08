@@ -117,9 +117,9 @@ function generateDimensionOptions(floorArea) {
  * Helper to generate options with a specific step size
  */
 function generateDimensionOptionsWithStep(floorArea, step) {
-    const options = [];
     step = Math.max(5, step);
 
+    const options = [];
     const minLength = Math.max(step, Math.ceil((Math.sqrt(floorArea / 3)) / step) * step);
     const maxLength = Math.floor((Math.sqrt(floorArea * 3)) / step) * step;
 
@@ -127,12 +127,12 @@ function generateDimensionOptionsWithStep(floorArea, step) {
         const width = floorArea / length;
         const ratio = length / width;
         if (ratio >= 0.33 && ratio <= 3) {
-            options.push({
-                length: length,
-                width: width,
-                label: `${length} × ${width.toFixed(1)} m`
-            });
+            options.push({ length, width, label: `${length} × ${width.toFixed(1)} m` });
         }
+    }
+
+    if (options.length < 3 && step > 5) {
+        return generateDimensionOptionsWithStep(floorArea, step / 2);
     }
 
     return options;
@@ -185,5 +185,19 @@ function getCurrentFloorDimensions() {
         floorArea,
         floorWidth,
         floorLength: shipData.floorLength
+    };
+}
+
+// CommonJS export for Jest (no-op in browsers where `module` is undefined)
+if (typeof module !== 'undefined') {
+    module.exports = {
+        calculateTotalFloorArea,
+        calculateFloorArea,
+        calculateDefaultFloorLength,
+        calculateFloorWidth,
+        generateDimensionOptions,
+        generateDimensionOptionsWithStep,
+        calculateArmorThickness,
+        getCurrentFloorDimensions,
     };
 }

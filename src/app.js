@@ -363,6 +363,7 @@ function loadCsvFromString(csvString, source = 'unknown', filename = '') {
         shipData.components = filteredComponents;
         shipData.armorTons = armorTons;
         shipData.componentPlacements = {}; // Reset placements
+        shipData.originalCsv = csvString; // Preserve raw CSV so share URL round-trips correctly
 
         // Calculate default floor length
         const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
@@ -425,25 +426,28 @@ function checkForUrlCsvData() {
  * @param {number} totalCost - Total cost for small craft format
  * @returns {string} CSV formatted string
  */
+function escapeCsvField(value) {
+    value = String(value);
+    if (value.includes('"') || value.includes(',') || value.includes('\n')) {
+        return '"' + value.replace(/"/g, '""') + '"';
+    }
+    return value;
+}
+
 function generateCsvString(components, shipName = '', totalTons = 0, totalCost = 0) {
     let csv = '';
 
-    // If ship name exists, use small craft format
     if (shipName) {
-        csv += `Name,${shipName}\n`;
+        csv += `Name,${escapeCsvField(shipName)}\n`;
         csv += `Hull,${totalTons} tons,${totalCost} MCr\n`;
         csv += '\n';
         csv += 'Category,Item,Tons,Cost (MCr)\n';
     } else {
-        // Standard format
         csv += 'Category,Item,Tons,Cost\n';
     }
 
     components.forEach(c => {
-        // Escape fields that contain commas by wrapping in quotes
-        const category = c.category.includes(',') ? `"${c.category}"` : c.category;
-        const item = c.item.includes(',') ? `"${c.item}"` : c.item;
-        csv += `${category},${item},${c.tons},${c.cost}\n`;
+        csv += `${escapeCsvField(c.category)},${escapeCsvField(c.item)},${c.tons},${c.cost}\n`;
     });
     return csv;
 }
@@ -458,8 +462,9 @@ function generateShareableUrl() {
     }
 
     try {
-        // Convert components back to CSV format
-        const csvString = generateCsvString(shipData.components, shipData.shipName, shipData.totalTons, shipData.totalCost);
+        // Use the original CSV if available so hull/armor data round-trips correctly
+        const csvString = shipData.originalCsv ||
+            generateCsvString(shipData.components, shipData.shipName, shipData.totalTons, shipData.totalCost);
 
         // URL encode the CSV data
         const encodedCsv = encodeURIComponent(csvString);

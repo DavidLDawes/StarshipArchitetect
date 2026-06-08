@@ -596,19 +596,15 @@ function showResizeInstructions() {
 }
 
 /**
- * Hide resize instructions
+ * Hide resize instructions — restore selection banner if something is still selected,
+ * otherwise hide the banner entirely.
  */
 function hideResizeInstructions() {
-    const instructions = document.getElementById('placement-instructions');
-    if (instructions && resizeState.isResizing === false) {
-        // Only hide if we're showing resize instructions
-        const isShowingResizeText = instructions.textContent.includes('resize');
-        if (isShowingResizeText && uiState.selectedPlacement) {
-            // Restore selection instructions
-            showSelectionInstructions();
-        } else if (isShowingResizeText) {
-            instructions.classList.add('hidden');
-        }
+    if (uiState.selectedPlacement) {
+        showSelectionInstructions();
+    } else {
+        const instructions = document.getElementById('placement-instructions');
+        if (instructions) instructions.classList.add('hidden');
     }
 }
 
@@ -646,17 +642,11 @@ function setupResizeHandlers(canvas, floorIndex) {
 }
 
 /**
- * Setup global mouse up handler
+ * Setup global mouse up handler.
+ * Escape is handled centrally in component-modal.js to avoid duplicate listeners.
  */
 function setupGlobalResizeHandlers() {
     document.addEventListener('mouseup', handleResizeMouseUp);
-
-    // Handle escape key to cancel
-    document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && resizeState.isResizing) {
-            cancelResize();
-        }
-    });
 }
 
 // Initialize global handlers

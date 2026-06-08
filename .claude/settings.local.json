@@ -18,7 +18,8 @@
       "Bash(node test-filtering-integration.js:*)",
       "Bash(start test-small-craft.html)",
       "Bash(start index.html)",
-      "Bash(start test-debug-tonnage.html)"
+      "Bash(start test-debug-tonnage.html)",
+      "Bash(npm run *)"
     ]
   }
 }

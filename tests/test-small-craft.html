@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -38,7 +38,7 @@
 
     <div id="test-results"></div>
 
-    <script src="csv-parser.js"></script>
+    <script src="../src/csv-parser.js"></script>
     <script>
         const results = document.getElementById('test-results');
 
@@ -46,7 +46,7 @@
             const div = document.createElement('div');
             div.className = `test-result ${success ? 'success' : 'error'}`;
             div.innerHTML = `
-                <h3>${success ? '✅' : '❌'} ${title}</h3>
+                <h3>${success ? 'âœ…' : 'âŒ'} ${title}</h3>
                 <p>${message}</p>
                 ${details ? `<pre>${details}</pre>` : ''}
             `;
@@ -167,3 +167,4 @@ TOTALS,Total Mass,89.70,
     </script>
 </body>
 </html>
+

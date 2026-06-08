@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -97,8 +97,8 @@
         // Define constant needed by floor-utils.js
         const SQM_PER_TON = 14;
     </script>
-    <script src="csv-parser.js"></script>
-    <script src="floor-utils.js"></script>
+    <script src="../src/csv-parser.js"></script>
+    <script src="../src/floor-utils.js"></script>
     <script>
         // Mock shipData for testing
         let shipData = {
@@ -162,9 +162,9 @@
             let html = '<div class="result">';
 
             if (result.success === expected.success) {
-                html += '<strong style="color: #3fb950;">✓ PASSED</strong><br>';
+                html += '<strong style="color: #3fb950;">âœ“ PASSED</strong><br>';
             } else {
-                html += '<strong style="color: #f85149;">✗ FAILED</strong><br>';
+                html += '<strong style="color: #f85149;">âœ— FAILED</strong><br>';
             }
 
             if (result.success) {
@@ -303,3 +303,5 @@ Total,Total,1000,366.1`;
     </div>
 </body>
 </html>
+
+

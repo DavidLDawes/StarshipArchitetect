@@ -164,9 +164,10 @@ function handleComponentMove(event, floorIndex) {
     let newX = clickX - sel.length / 2;
     let newY = clickY - sel.width / 2;
 
-    // Clamp to floor bounds
-    newX = Math.max(0, Math.min(newX, floorLength - sel.length));
-    newY = Math.max(0, Math.min(newY, floorWidth - sel.width));
+    // Clamp to usable area (respecting armor boundary)
+    const armorThickness = shipData.armorThickness || 0;
+    newX = Math.max(armorThickness, Math.min(newX, floorLength - sel.length - armorThickness));
+    newY = Math.max(armorThickness, Math.min(newY, floorWidth - sel.width - armorThickness));
 
     // Do not round here — allow fine-grained movement when dragging selected components
 
@@ -239,15 +240,16 @@ function rotateSelectedComponent() {
     let newX = pos.x;
     let newY = pos.y;
 
-    // Adjust position if rotation would push it out of bounds
-    if (newX + newLength > floorLength) {
-        newX = floorLength - newLength;
+    // Adjust position if rotation would push it out of bounds (respect armor boundary)
+    const armorThickness = shipData.armorThickness || 0;
+    if (newX + newLength > floorLength - armorThickness) {
+        newX = floorLength - newLength - armorThickness;
     }
-    if (newY + newWidth > floorWidth) {
-        newY = floorWidth - newWidth;
+    if (newY + newWidth > floorWidth - armorThickness) {
+        newY = floorWidth - newWidth - armorThickness;
     }
-    newX = Math.max(0, newX);
-    newY = Math.max(0, newY);
+    newX = Math.max(armorThickness, newX);
+    newY = Math.max(armorThickness, newY);
 
     // Temporarily remove to check overlap
     const oldPos = { ...pos };
@@ -313,6 +315,7 @@ function deleteSelectedComponent() {
 
     // Add to undo history before deleting
     uiState.placementHistory.push({
+        type: 'delete',
         componentIndex: sel.componentIndex,
         floor: pos.floor,
         x: pos.x,

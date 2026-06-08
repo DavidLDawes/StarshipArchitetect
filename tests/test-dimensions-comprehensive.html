@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -63,7 +63,7 @@
             totalTons: 5000
         };
     </script>
-    <script src="component-dimensions.js"></script>
+    <script src="../src/component-dimensions.js"></script>
 
     <script>
         const tests = [
@@ -148,8 +148,8 @@
                 testDiv.className = 'test-case';
 
                 let html = `<h3>Test ${idx + 1}: ${test.name}</h3>`;
-                html += `<p>Component: ${componentArea.toFixed(1)} m² (${test.component.tons} tons)</p>`;
-                html += `<p>Floor: ${test.floorLength}m × ${test.floorWidth}m = ${floorArea} m²</p>`;
+                html += `<p>Component: ${componentArea.toFixed(1)} mÂ² (${test.component.tons} tons)</p>`;
+                html += `<p>Floor: ${test.floorLength}m Ã— ${test.floorWidth}m = ${floorArea} mÂ²</p>`;
 
                 // Check full width option
                 const hasFullWidth = result.options.find(opt =>
@@ -169,16 +169,16 @@
                 if (test.expected.fullWidth) {
                     const expectedLength = test.expected.fullWidth.length;
                     if (hasFullWidth && Math.abs(hasFullWidth.length - expectedLength) < 0.5) {
-                        html += `<p class="pass">✓ Full width option found: ${hasFullWidth.label}</p>`;
+                        html += `<p class="pass">âœ“ Full width option found: ${hasFullWidth.label}</p>`;
                     } else {
-                        html += `<p class="fail">✗ Expected full width (${expectedLength.toFixed(1)} × ${test.floorWidth}m) not found</p>`;
+                        html += `<p class="fail">âœ— Expected full width (${expectedLength.toFixed(1)} Ã— ${test.floorWidth}m) not found</p>`;
                         passed = false;
                     }
                 } else {
                     if (!hasFullWidth) {
-                        html += `<p class="pass">✓ Full width option correctly absent</p>`;
+                        html += `<p class="pass">âœ“ Full width option correctly absent</p>`;
                     } else {
-                        html += `<p class="fail">✗ Unexpected full width option: ${hasFullWidth.label}</p>`;
+                        html += `<p class="fail">âœ— Unexpected full width option: ${hasFullWidth.label}</p>`;
                         passed = false;
                     }
                 }
@@ -187,16 +187,16 @@
                 if (test.expected.fullLength) {
                     const expectedWidth = test.expected.fullLength.width;
                     if (hasFullLength && Math.abs(hasFullLength.width - expectedWidth) < 0.5) {
-                        html += `<p class="pass">✓ Full length option found: ${hasFullLength.label}</p>`;
+                        html += `<p class="pass">âœ“ Full length option found: ${hasFullLength.label}</p>`;
                     } else {
-                        html += `<p class="fail">✗ Expected full length (${test.floorLength} × ${expectedWidth.toFixed(1)}m) not found</p>`;
+                        html += `<p class="fail">âœ— Expected full length (${test.floorLength} Ã— ${expectedWidth.toFixed(1)}m) not found</p>`;
                         passed = false;
                     }
                 } else {
                     if (!hasFullLength) {
-                        html += `<p class="pass">✓ Full length option correctly absent</p>`;
+                        html += `<p class="pass">âœ“ Full length option correctly absent</p>`;
                     } else {
-                        html += `<p class="fail">✗ Unexpected full length option: ${hasFullLength.label}</p>`;
+                        html += `<p class="fail">âœ— Unexpected full length option: ${hasFullLength.label}</p>`;
                         passed = false;
                     }
                 }
@@ -206,7 +206,7 @@
                 html += `<strong>All options (${result.options.length}):</strong><br>`;
                 result.options.slice(0, 10).forEach((opt, i) => {
                     const area = (opt.length * opt.width).toFixed(1);
-                    html += `${i + 1}. ${opt.label} = ${area} m²<br>`;
+                    html += `${i + 1}. ${opt.label} = ${area} mÂ²<br>`;
                 });
                 if (result.options.length > 10) {
                     html += `... and ${result.options.length - 10} more<br>`;
@@ -229,7 +229,7 @@
             summaryDiv.innerHTML = `
                 <h2>Test Summary</h2>
                 <p>Total: ${totalTests} | <span class="pass">Passed: ${passCount}</span> | <span class="fail">Failed: ${failCount}</span></p>
-                ${failCount === 0 ? '<p class="pass">All tests passed! ✓</p>' : '<p class="fail">Some tests failed. Please review above.</p>'}
+                ${failCount === 0 ? '<p class="pass">All tests passed! âœ“</p>' : '<p class="fail">Some tests failed. Please review above.</p>'}
             `;
         }
 
@@ -237,3 +237,4 @@
     </script>
 </body>
 </html>
+

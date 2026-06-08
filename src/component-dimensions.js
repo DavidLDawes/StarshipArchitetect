@@ -185,3 +185,8 @@ function generateComponentDimensionOptions(component, floorArea, floorLength, fl
         effectiveFloorCount
     };
 }
+
+// CommonJS export for Jest (no-op in browsers where `module` is undefined)
+if (typeof module !== 'undefined') {
+    module.exports = { calculateComponentArea, generateComponentDimensionOptions };
+}

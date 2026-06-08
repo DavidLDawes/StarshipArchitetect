@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -19,7 +19,7 @@
     <h1>Debug Tonnage Parsing</h1>
     <div id="output"></div>
 
-    <script src="csv-parser.js"></script>
+    <script src="../src/csv-parser.js"></script>
     <script>
         const output = document.getElementById('output');
 
@@ -51,16 +51,17 @@ Armor,bonded_superdense Rating 15,11.25,2.4`;
         log(`Components: ${parsed.components.length}`);
 
         if (parsed.totalTons === 90) {
-            log('✅ Total tonnage is correct (90)');
+            log('âœ… Total tonnage is correct (90)');
         } else {
-            log(`❌ Total tonnage is WRONG - expected 90, got ${parsed.totalTons}`, true);
+            log(`âŒ Total tonnage is WRONG - expected 90, got ${parsed.totalTons}`, true);
         }
 
         if (parsed.totalCost === 98.1) {
-            log('✅ Total cost is correct (98.1)');
+            log('âœ… Total cost is correct (98.1)');
         } else {
-            log(`❌ Total cost is WRONG - expected 98.1, got ${parsed.totalCost}`, true);
+            log(`âŒ Total cost is WRONG - expected 98.1, got ${parsed.totalCost}`, true);
         }
     </script>
 </body>
 </html>
+

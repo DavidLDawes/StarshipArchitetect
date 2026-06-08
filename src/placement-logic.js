@@ -206,3 +206,8 @@ function cancelPlacement() {
 
     finishPlacement();
 }
+
+// CommonJS export for Jest (no-op in browsers where `module` is undefined)
+if (typeof module !== 'undefined') {
+    module.exports = { isWithinUsableArea, checkOverlap, findValidPosition };
+}

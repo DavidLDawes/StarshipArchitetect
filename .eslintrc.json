@@ -1,0 +1,33 @@
+{
+  "root": true,
+  "env": {
+    "browser": true,
+    "es2020": true
+  },
+  "rules": {
+    "eqeqeq": "error",
+    "no-var": "warn",
+    "no-console": "off",
+    "no-unused-vars": "off",
+    "no-undef": "off"
+  },
+  "overrides": [
+    {
+      "files": [
+        "build.js",
+        "jest.config.js",
+        "tests/jest-setup.js",
+        "tests/unit/**/*.test.js"
+      ],
+      "env": {
+        "browser": false,
+        "node": true,
+        "jest": true
+      },
+      "rules": {
+        "no-undef": "error",
+        "no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }]
+      }
+    }
+  ]
+}

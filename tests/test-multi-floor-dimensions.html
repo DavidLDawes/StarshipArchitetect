@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -120,8 +120,8 @@
         <h2>Test Case: 1752 Ton Cargo Bay</h2>
         <div class="info">
             <strong>Component:</strong> Cargo Bay, 1752 tons<br>
-            <strong>Total Area:</strong> 1752 × 14 / 2.5 = 9,830.4 m²<br>
-            <strong>Floor Dimensions:</strong> 100m × 35m = 3,500 m²<br>
+            <strong>Total Area:</strong> 1752 Ã— 14 / 2.5 = 9,830.4 mÂ²<br>
+            <strong>Floor Dimensions:</strong> 100m Ã— 35m = 3,500 mÂ²<br>
             <strong>Minimum Floors Needed:</strong> Math.ceil(9830.4 / 3500) = 3 floors
         </div>
 
@@ -167,7 +167,7 @@
         };
         const SQM_PER_TON = 14;
     </script>
-    <script src="component-dimensions.js"></script>
+    <script src="../src/component-dimensions.js"></script>
 
     <script>
         function runTest() {
@@ -209,22 +209,22 @@
             html += '<tr><th>Property</th><th>Value</th><th>Validation</th></tr>';
 
             // Component area
-            html += `<tr><td>Total Component Area</td><td>${componentArea.toFixed(1)} m²</td><td></td></tr>`;
+            html += `<tr><td>Total Component Area</td><td>${componentArea.toFixed(1)} mÂ²</td><td></td></tr>`;
 
             // Area per floor
             const expectedAreaPerFloor = componentArea / numFloorsSelected;
             const actualAreaPerFloor = dimInfo.areaPerFloor;
             const areaMatch = Math.abs(expectedAreaPerFloor - actualAreaPerFloor) < 0.01;
-            html += `<tr><td>Area Per Floor</td><td>${actualAreaPerFloor.toFixed(1)} m²</td><td class="${areaMatch ? 'success' : 'error'}">${areaMatch ? '✓' : '✗ Expected: ' + expectedAreaPerFloor.toFixed(1)}</td></tr>`;
+            html += `<tr><td>Area Per Floor</td><td>${actualAreaPerFloor.toFixed(1)} mÂ²</td><td class="${areaMatch ? 'success' : 'error'}">${areaMatch ? 'âœ“' : 'âœ— Expected: ' + expectedAreaPerFloor.toFixed(1)}</td></tr>`;
 
             // Number of floors
             html += `<tr><td>Floors Selected</td><td>${numFloorsSelected}</td><td></td></tr>`;
-            html += `<tr><td>Effective Floor Count</td><td>${dimInfo.effectiveFloorCount}</td><td class="${dimInfo.effectiveFloorCount === numFloorsSelected ? 'success' : 'error'}">${dimInfo.effectiveFloorCount === numFloorsSelected ? '✓' : '✗'}</td></tr>`;
+            html += `<tr><td>Effective Floor Count</td><td>${dimInfo.effectiveFloorCount}</td><td class="${dimInfo.effectiveFloorCount === numFloorsSelected ? 'success' : 'error'}">${dimInfo.effectiveFloorCount === numFloorsSelected ? 'âœ“' : 'âœ—'}</td></tr>`;
 
-            // Validation: total area = floors × area per floor
+            // Validation: total area = floors Ã— area per floor
             const calculatedTotal = numFloorsSelected * actualAreaPerFloor;
             const totalMatch = Math.abs(calculatedTotal - componentArea) < 0.1;
-            html += `<tr><td>Validation</td><td>${numFloorsSelected} × ${actualAreaPerFloor.toFixed(1)} = ${calculatedTotal.toFixed(1)} m²</td><td class="${totalMatch ? 'success' : 'error'}">${totalMatch ? '✓ Correct' : '✗ Should equal ' + componentArea.toFixed(1)}</td></tr>`;
+            html += `<tr><td>Validation</td><td>${numFloorsSelected} Ã— ${actualAreaPerFloor.toFixed(1)} = ${calculatedTotal.toFixed(1)} mÂ²</td><td class="${totalMatch ? 'success' : 'error'}">${totalMatch ? 'âœ“ Correct' : 'âœ— Should equal ' + componentArea.toFixed(1)}</td></tr>`;
 
             html += '</table>';
 
@@ -242,9 +242,9 @@
 
                     html += `<div class="dimension-option">
                         <strong>${opt.label}</strong><br>
-                        Area: ${area.toFixed(1)} m²
-                        <span class="${areaOk ? 'success' : 'error'}">${areaOk ? '✓' : '✗ Out of range'}</span>
-                        <span class="${labelOk ? 'success' : 'error'}">${labelOk ? '✓' : '✗ Label format'}</span>
+                        Area: ${area.toFixed(1)} mÂ²
+                        <span class="${areaOk ? 'success' : 'error'}">${areaOk ? 'âœ“' : 'âœ— Out of range'}</span>
+                        <span class="${labelOk ? 'success' : 'error'}">${labelOk ? 'âœ“' : 'âœ— Label format'}</span>
                     </div>`;
                 });
                 html += '</div>';
@@ -279,8 +279,8 @@
 
             let html = '<h4>Component Info</h4>';
             const componentArea = calculateComponentArea(component);
-            html += `<p>Total Area: ${componentArea.toFixed(1)} m²</p>`;
-            html += `<p>Floor Area: ${floorArea.toFixed(1)} m²</p>`;
+            html += `<p>Total Area: ${componentArea.toFixed(1)} mÂ²</p>`;
+            html += `<p>Floor Area: ${floorArea.toFixed(1)} mÂ²</p>`;
             html += `<p>Minimum Floors Needed: ${Math.ceil(componentArea / floorArea)}</p>`;
 
             for (let numFloors = 1; numFloors <= 4; numFloors++) {
@@ -293,13 +293,13 @@
                 );
 
                 html += `<h4>${numFloors} Floor(s)</h4>`;
-                html += `<p>Area per floor: ${dimInfo.areaPerFloor.toFixed(1)} m²</p>`;
+                html += `<p>Area per floor: ${dimInfo.areaPerFloor.toFixed(1)} mÂ²</p>`;
                 html += `<p>Dimension options: ${dimInfo.options.length}</p>`;
 
                 if (dimInfo.options.length > 0) {
                     html += '<ul>';
                     dimInfo.options.slice(0, 5).forEach(opt => {
-                        html += `<li>${opt.label} (${(opt.length * opt.width).toFixed(1)} m²)</li>`;
+                        html += `<li>${opt.label} (${(opt.length * opt.width).toFixed(1)} mÂ²)</li>`;
                     });
                     if (dimInfo.options.length > 5) {
                         html += `<li>... and ${dimInfo.options.length - 5} more</li>`;
@@ -320,3 +320,4 @@
     </script>
 </body>
 </html>
+

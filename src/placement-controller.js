@@ -162,6 +162,7 @@ function placeMultiFloorComponent(data, x, y, compLength, compWidth, floorLength
 
         // Record in history for undo
         uiState.placementHistory.push({
+            type: 'place',
             componentIndex: data.componentIndex, floor: f,
             x: x, y: y, length: compLength, width: compWidth
         });
@@ -197,6 +198,7 @@ function placeSingleFloorComponent(data, floorIndex, x, y, compLength, compWidth
 
     // Record in history for undo
     uiState.placementHistory.push({
+        type: 'place',
         componentIndex: data.componentIndex, floor: floorIndex,
         x: x, y: y, length: compLength, width: compWidth
     });

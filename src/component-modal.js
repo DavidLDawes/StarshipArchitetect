@@ -353,9 +353,11 @@ function setupComponentModalEvents() {
 
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
-        // Escape to cancel selection, placement, or close modal
+        // Escape priority: resize → selection → placement → modal
         if (e.key === 'Escape') {
-            if (uiState.selectedPlacement) {
+            if (resizeState && resizeState.isResizing) {
+                cancelResize();
+            } else if (uiState.selectedPlacement) {
                 cancelSelection();
             } else if (uiState.isPlacingComponent) {
                 cancelPlacement();
