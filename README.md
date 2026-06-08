@@ -2,7 +2,7 @@
 
 Starship Architect is a tool used to architect Traveler SRD starships. Using this tool you'll layout the floors of your starship as two dimensional plans, splitting your starships tonnage out into floors (and for capital ships, sections) then architecting the floors or sections in detail, putting in engines, fuel, cabins, cargo bays, a bridge or control room, perhaps weapons armor, and shields for military designs as called for in the starships design.
 
-[Traveller Starship Designer](https://srd-tools.com/ShipDesign/index.html), [Traveller Capital Ship Designer](https://srd-tools.com/CapitalShipDesign/index.html), and [Traveller Small Craft Desginer](https://srd-tools.com/CapitalShipDesign/index.html) are available to create the designs for your starships and smallcraft and export them as .CSV files for use by StarshipArchitect. Alternatively, any .CSV file with a list of items and their tonnage can be used to create the design for your starship or smallcraft.
+[Traveller Starship Designer](https://srd-tools.com/ShipDesign/index.html), [Traveller Capital Ship Designer](https://srd-tools.com/CapitalShipDesign/index.html), and [Traveller Small Craft Designer](https://srd-tools.com/CapitalShipDesign/index.html) are available to create the designs for your starships and smallcraft and export them as .CSV files for use by StarshipArchitect. Alternatively, any .CSV file with a list of items and their tonnage can be used to create the design for your starship or smallcraft.
 
 ## Features
 
@@ -33,6 +33,22 @@ index.html?csv=Category%2CItem%2CTons%2CCost%0AEngine%2CManeuver%20Drive%2C75%2C
 After loading a CSV file, click the "Share Design" button in the Ship Statistics section to automatically generate a shareable URL and copy it to your clipboard.
 
 **Note:** Very large ship designs may exceed browser URL length limits (~2000 characters). The app will warn you if the generated URL is too long.
+
+## Testing & CI
+
+The project has unit tests and ESLint configured, with GitHub Actions running both on every push and pull request.
+
+### Run tests locally
+
+```bash
+npm run lint           # ESLint — zero warnings expected
+npm run test           # Jest unit tests (149 tests)
+npm run test:coverage  # Jest with Istanbul coverage report
+```
+
+Coverage thresholds (enforced by `jest.config.js`): **70% lines, 70% functions, 55% branches** across the four pure-logic modules (`csv-parser.js`, `floor-utils.js`, `component-dimensions.js`, `placement-logic.js`). Current coverage significantly exceeds those thresholds (~90% lines).
+
+DOM-dependent functions (`finishPlacement`, `cancelPlacement`, all canvas rendering) are intentionally excluded from coverage collection.
 
 ## Development & Build
 
