@@ -19,7 +19,16 @@
       "Bash(start test-small-craft.html)",
       "Bash(start index.html)",
       "Bash(start test-debug-tonnage.html)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(gh api *)",
+      "Bash(npm ls *)",
+      "Bash(gh repo *)",
+      "Bash(gh pr *)",
+      "Bash(gh run *)",
+      "Bash(git fetch *)",
+      "Bash(git merge *)",
+      "Bash(git stash *)",
+      "Bash(git add *)"
     ]
   }
 }
