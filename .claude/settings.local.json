@@ -28,7 +28,12 @@
       "Bash(git fetch *)",
       "Bash(git merge *)",
       "Bash(git stash *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git checkout *)",
+      "Bash(npm audit *)",
+      "Bash(git commit -m ' *)",
+      "Bash(npm ci *)",
+      "Bash(git push *)"
     ]
   }
 }
