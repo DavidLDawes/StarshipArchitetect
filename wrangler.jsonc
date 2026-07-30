@@ -1,0 +1,14 @@
+{
+  "name": "tsg-architect",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-07-29",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "html_handling": "none"
+  },
+  "routes": [
+    { "pattern": "srd-tools.com/StarshipArchitect", "zone_name": "srd-tools.com" },
+    { "pattern": "srd-tools.com/StarshipArchitect/*", "zone_name": "srd-tools.com" }
+  ]
+}

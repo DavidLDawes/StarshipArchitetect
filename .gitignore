@@ -4,6 +4,9 @@ node_modules/
 # Build output
 dist/
 
+# Wrangler local cache/state
+.wrangler/
+
 # Test coverage output
 coverage/
 
