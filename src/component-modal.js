@@ -106,8 +106,8 @@ function openComponentModal(componentIndex) {
 
     modalTitle.textContent = component.item;
     modalStats.innerHTML = `
-        <span>📦 ${component.tons} tons</span>
-        <span>📐 ${dimInfo.componentArea.toFixed(1)} m²</span>
+        <span>${formatComponentTons(component)}</span>
+        <span>📐 ${dimInfo.componentArea.toFixed(1)} m²${(component.quantity || 1) > 1 ? ' each' : ''}</span>
         <span>💰 ${component.cost.toLocaleString()} MCr</span>
         ${requiresHullAccess(component) ? '<span class="hull-badge" title="Needs access to space: must touch the outer hull">🛰️ Outer hull</span>' : ''}
     `;

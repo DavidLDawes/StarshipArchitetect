@@ -22,6 +22,7 @@ let shipData = {
     numFloors: 4,
     floorLength: 30,
     ceilingHeight: DEFAULT_CEILING_HEIGHT,
+    combineRecHealth: false, // Rec/health items ride along with staterooms (rec-health.js)
     componentPlacements: {} // { componentIndex: { length, width, floors: [{floor, x, y}] } }
 };
 
@@ -231,7 +232,16 @@ function renderFloors() {
 function renderComponents() {
     elements.componentsList.innerHTML = '';
 
+    // Staterooms + rec/health per floor (when combined) and the combine toggle
+    const accommodations = renderAccommodationsPanel();
+
     shipData.components.forEach((component, index) => {
+        // Rec/health items combined with staterooms aren't placed by hand
+        if (component.combinedWithStaterooms) {
+            elements.componentsList.appendChild(createCombinedRecHealthItem(component, index, accommodations));
+            return;
+        }
+
         // Count how many of this component are placed (blocks and regions hold several)
         const placement = shipData.componentPlacements[index];
         const placedCount = getPlacedCount(placement);
@@ -287,7 +297,7 @@ function renderComponents() {
             <div class="component-category">${component.category}</div>
             <div class="component-name">${component.item}</div>
             <div class="component-stats">
-                <span>📦 ${component.tons} tons${totalQuantity > 1 ? ` (${component.tonsPerItem} each)` : ''}</span>
+                <span>${formatComponentTons(component)}</span>
                 <span>💰 ${component.cost.toLocaleString()} MCr</span>
                 ${requiresHullAccess(component) ? '<span class="hull-badge" title="Needs access to space: must touch the outer hull">🛰️ Hull</span>' : ''}
             </div>
@@ -375,6 +385,7 @@ function loadCsvFromString(csvString, source = 'unknown', filename = '') {
         shipData.components = filteredComponents;
         shipData.armorTons = armorTons;
         shipData.componentPlacements = {}; // Reset placements
+        shipData.combineRecHealth = false; // New components start uncombined
         shipData.originalCsv = csvString; // Preserve raw CSV so share URL round-trips correctly
 
         // Calculate default floor length
@@ -631,6 +642,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     setupComponentModalEvents();
+    setupCombineRecHealthEvents();
     initializeFloorSelector();
     console.log('🚀 Starship Architect initialized');
 });

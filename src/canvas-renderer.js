@@ -165,7 +165,9 @@ function getComponentColors(compIdx) {
  */
 function getPlacementLabel(component, placementNum, count) {
     // Get component name - use itemName for multi-quantity, remove any "xN" suffix
-    const baseName = (component.itemName || component.item).replace(/\s*x\d+$/, '');
+    let baseName = (component.itemName || component.item).replace(/\s*x\d+$/, '');
+    // Staterooms combined with rec/health include that space
+    if (component.overheadPerItem > 0) baseName += ' + rec';
     if (count > 1) {
         return `${baseName} ×${count}`;
     }

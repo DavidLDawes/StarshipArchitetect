@@ -283,9 +283,9 @@ function updateBlockOptions(componentIndex, component, itemArea, preview) {
     }
 
     const { floorArea, floorWidth, floorLength } = getCurrentFloorDimensions();
-    const blockTons = count * (component.tonsPerItem || component.tons);
+    const blockTons = count * getEffectiveTonsPerItem(component);
     const dimInfo = generateComponentDimensionOptions(
-        { ...component, tons: blockTons, tonsPerItem: blockTons },
+        { ...component, tons: blockTons, tonsPerItem: blockTons, overheadPerItem: 0 },
         floorArea, floorLength, floorWidth, 1
     );
     for (const opt of dimInfo.options) {
