@@ -37,10 +37,13 @@ function handleComponentSelection(event, floorIndex) {
             // Use per-placement dimensions (fallback to component-level)
             const pLength = pos.length || placement.length;
             const pWidth = pos.width || placement.width;
+            const rects = getPlacementRects(pos, placement);
 
-            // Check if click is inside this component
-            if (clickX >= pos.x && clickX <= pos.x + pLength &&
-                clickY >= pos.y && clickY <= pos.y + pWidth) {
+            // Check if click is inside this component (any of its rectangles)
+            const hit = rects.some(r => clickX >= r.x && clickX <= r.x + r.length &&
+                clickY >= r.y && clickY <= r.y + r.width);
+            if (hit) {
+                const isShape = !!(pos.rects && pos.rects.length > 0);
 
                 // Select this component
                 uiState.selectedPlacement = {
@@ -50,7 +53,8 @@ function handleComponentSelection(event, floorIndex) {
                     length: pLength,
                     width: pWidth,
                     originalX: pos.x,
-                    originalY: pos.y
+                    originalY: pos.y,
+                    isShape: isShape
                 };
 
                 // Add visual feedback
@@ -58,10 +62,14 @@ function handleComponentSelection(event, floorIndex) {
 
                 // Redraw with selection highlight
                 drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
-                drawSelectionHighlight(canvas, pos.x, pos.y, pLength, pWidth, pixelsPerMeter);
+                if (isShape) {
+                    drawShapeSelectionHighlight(canvas, rects, pixelsPerMeter);
+                } else {
+                    drawSelectionHighlight(canvas, pos.x, pos.y, pLength, pWidth, pixelsPerMeter);
+                }
 
                 // Show instructions
-                showSelectionInstructions();
+                showSelectionInstructions(isShape ? getPlacementCount(pos) : 0);
 
                 return;
             }
@@ -88,9 +96,30 @@ function drawSelectionHighlight(canvas, x, y, length, width, pixelsPerMeter) {
 }
 
 /**
- * Show selection mode instructions
+ * Draw selection highlight on an odd-shaped (region) placement
  */
-function showSelectionInstructions() {
+function drawShapeSelectionHighlight(canvas, rects, pixelsPerMeter) {
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'rgba(0, 255, 0, 0.15)';
+    ctx.strokeStyle = '#00ff00';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 4]);
+    for (const r of rects) {
+        const px = r.x * pixelsPerMeter;
+        const py = r.y * pixelsPerMeter;
+        const pw = r.length * pixelsPerMeter;
+        const ph = r.width * pixelsPerMeter;
+        ctx.fillRect(px, py, pw, ph);
+        ctx.strokeRect(px, py, pw, ph);
+    }
+    ctx.setLineDash([]);
+}
+
+/**
+ * Show selection mode instructions
+ * @param {number} regionCount - Item count when a region placement is selected (0 otherwise)
+ */
+function showSelectionInstructions(regionCount = 0) {
     let instructions = document.getElementById('placement-instructions');
     if (!instructions) {
         instructions = document.createElement('div');
@@ -98,7 +127,9 @@ function showSelectionInstructions() {
         instructions.className = 'placement-instructions';
         document.body.appendChild(instructions);
     }
-    instructions.textContent = 'Drag edges to resize | Click to move | R/L to rotate | Delete to remove | Escape to cancel';
+    instructions.textContent = regionCount > 0
+        ? `Region holding ${regionCount} items | Delete to remove | Click elsewhere or Escape to deselect`
+        : 'Drag edges to resize | Click to move | R/L to rotate | Delete to remove | Escape to cancel';
     instructions.classList.remove('hidden');
 }
 
@@ -146,6 +177,14 @@ function handleComponentMove(event, floorIndex) {
     const sel = uiState.selectedPlacement;
     if (!sel) return;
 
+    // Region placements are fitted to their remnant and can't be moved:
+    // a click elsewhere just deselects (and selects whatever was clicked)
+    if (sel.isShape) {
+        cancelSelection();
+        handleComponentSelection(event, floorIndex);
+        return;
+    }
+
     const canvas = event.target;
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
@@ -189,14 +228,16 @@ function handleComponentMove(event, floorIndex) {
         return;
     }
 
-    // Add at new position with same dimensions
-    placement.floors.push({
+    // Re-insert the same entry at its new position (keeps item count, numbering,
+    // and object identity for undo history)
+    Object.assign(oldPlacement, {
         floor: floorIndex,
         x: newX,
         y: newY,
         length: sel.length,
         width: sel.width
     });
+    placement.floors.splice(sel.placementIndex, 0, oldPlacement);
 
     // Clear selection and preview
     uiState.selectedPlacement = null;
@@ -221,7 +262,7 @@ function handleComponentMove(event, floorIndex) {
  */
 function rotateSelectedComponent() {
     const sel = uiState.selectedPlacement;
-    if (!sel) return;
+    if (!sel || sel.isShape) return;
 
     const placement = shipData.componentPlacements[sel.componentIndex];
     if (!placement || !placement.floors) return;
@@ -252,7 +293,6 @@ function rotateSelectedComponent() {
     newY = Math.max(armorThickness, newY);
 
     // Temporarily remove to check overlap
-    const oldPos = { ...pos };
     placement.floors.splice(sel.placementIndex, 1);
 
     // Check for overlap at new position with new dimensions
@@ -260,7 +300,7 @@ function rotateSelectedComponent() {
 
     if (hasOverlap) {
         // Restore old position and show error
-        placement.floors.splice(sel.placementIndex, 0, oldPos);
+        placement.floors.splice(sel.placementIndex, 0, pos);
         const canvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
         if (canvas) {
             canvas.style.boxShadow = '0 0 20px red';
@@ -271,21 +311,15 @@ function rotateSelectedComponent() {
         return;
     }
 
-    // Add rotated placement at new position with new dimensions
-    placement.floors.push({
-        floor: sel.floorIndex,
-        x: newX,
-        y: newY,
-        length: newLength,
-        width: newWidth
-    });
+    // Re-insert the same entry rotated (keeps item count and identity)
+    Object.assign(pos, { x: newX, y: newY, length: newLength, width: newWidth });
+    placement.floors.splice(sel.placementIndex, 0, pos);
 
     // Update selection state with new dimensions and position
     sel.length = newLength;
     sel.width = newWidth;
     sel.originalX = newX;
     sel.originalY = newY;
-    sel.placementIndex = placement.floors.length - 1;
 
     // Redraw the floor
     const canvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
@@ -321,7 +355,8 @@ function deleteSelectedComponent() {
         x: pos.x,
         y: pos.y,
         length: sel.length,
-        width: sel.width
+        width: sel.width,
+        entry: pos // full entry, so item count and region shape are restored on undo
     });
 
     // Clear redo history since we made a new action

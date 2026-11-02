@@ -1,0 +1,625 @@
+/**
+ * Starship Architect - Bulk Allocation Module
+ * Allocation options for components that come in quantity (staterooms, turrets...):
+ *
+ *   single      — place items one at a time (the original behavior)
+ *   block       — place N items as one rectangle
+ *   fill-floor  — consume the free space on a chosen floor with as many items as fit
+ *   fill-region — pick an odd-shaped free region on the map; it is measured and
+ *                 assigned however many items fit
+ *
+ * Dependencies:
+ * - placement-geometry.js (free-space analysis and allocation planning)
+ * - component-dimensions.js (calculateComponentArea, generateComponentDimensionOptions)
+ * - component-modal.js (modal elements, updateDimensionOptions, closeComponentModal)
+ * - canvas-renderer.js (drawFloorWithComponents)
+ */
+
+// ========================================
+// Shared Helpers
+// ========================================
+
+/**
+ * Items of a component not yet placed
+ */
+function getRemainingCount(componentIndex) {
+    const component = shipData.components[componentIndex];
+    if (!component) return 0;
+    const total = component.quantity || 1;
+    return Math.max(0, total - getPlacedCount(shipData.componentPlacements[componentIndex]));
+}
+
+/**
+ * Display name for a component's items
+ */
+function getItemDisplayName(component) {
+    return (component.itemName || component.item).replace(/\s*x\d+$/, '');
+}
+
+/**
+ * Usable floor area inside the armor (m²)
+ */
+function getUsableFloorArea() {
+    const { floorLength, floorWidth } = getCurrentFloorDimensions();
+    const armor = shipData.armorThickness || 0;
+    return Math.max(0, floorLength - 2 * armor) * Math.max(0, floorWidth - 2 * armor);
+}
+
+/**
+ * Free-space analysis for a floor using current ship state
+ */
+function analyzeFloorNow(floorIndex) {
+    const { floorLength, floorWidth } = getCurrentFloorDimensions();
+    return analyzeFloorFreeSpace(floorIndex, floorLength, floorWidth, shipData.armorThickness || 0);
+}
+
+/**
+ * Commit planned allocations for a component on a floor as a single undoable action
+ * @returns {Array<object>} The placement entries created
+ */
+function applyAllocations(componentIndex, floorIndex, allocations) {
+    if (!shipData.componentPlacements[componentIndex]) {
+        shipData.componentPlacements[componentIndex] = { floors: [] };
+    }
+
+    const entries = allocations.map(a => {
+        const entry = {
+            floor: floorIndex,
+            x: a.bbox.x,
+            y: a.bbox.y,
+            length: a.bbox.length,
+            width: a.bbox.width,
+            count: a.count
+        };
+        // A region that came out as a single rectangle stays a plain block, so it
+        // can still be moved, rotated, and resized like any other placement
+        if (a.rects.length > 1) {
+            entry.rects = a.rects;
+        }
+        return entry;
+    });
+
+    shipData.componentPlacements[componentIndex].floors.push(...entries);
+    uiState.placementHistory.push({ type: 'fill', componentIndex, entries });
+    uiState.redoHistory = [];
+
+    const { floorLength, floorWidth } = getCurrentFloorDimensions();
+    const canvas = document.getElementById(`floor-canvas-${floorIndex}`);
+    if (canvas) {
+        drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth,
+            shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
+    }
+    renderComponents();
+    return entries;
+}
+
+/**
+ * Format square meters for display
+ */
+function formatArea(m2) {
+    return `${m2.toFixed(1)} m²`;
+}
+
+// ========================================
+// Modal: Allocation Section
+// ========================================
+
+/**
+ * Currently selected allocation mode ('single' when the section is hidden)
+ */
+function getAllocationMode() {
+    const section = document.getElementById('allocation-section');
+    if (!section || section.classList.contains('hidden')) return 'single';
+    const checked = document.querySelector('input[name="allocation-mode"]:checked');
+    return checked ? checked.value : 'single';
+}
+
+/**
+ * Block size entered by the user, clamped to what is left to place
+ */
+function getBlockCount(componentIndex) {
+    const input = document.getElementById('block-count');
+    const remaining = getRemainingCount(componentIndex);
+    const value = parseInt(input.value, 10);
+    if (isNaN(value) || value < 1) return 1;
+    return Math.min(value, remaining);
+}
+
+/**
+ * Prepare the allocation section when the component modal opens.
+ * Shown only for components with quantity > 1.
+ */
+function setupAllocationSection(componentIndex) {
+    const modal = document.getElementById('component-modal');
+    const section = document.getElementById('allocation-section');
+    const component = shipData.components[componentIndex];
+    const multiFloorSection = document.getElementById('multi-floor-section');
+    const floorSelect = document.getElementById('component-floor-select');
+
+    // Remember the single-item layout openComponentModal chose, to restore it
+    modal.dataset.singleUsesMultiFloor = String(!multiFloorSection.classList.contains('hidden'));
+
+    const total = component ? component.quantity || 1 : 1;
+    if (total <= 1) {
+        section.classList.add('hidden');
+        setRowVisible('dimensions-row', true);
+        setRowVisible('floor-select-row', true);
+        setPlaceButton('Place Component', true);
+        return;
+    }
+
+    section.classList.remove('hidden');
+
+    // Ensure the single-floor dropdown is populated (large items skip it)
+    if (floorSelect.options.length !== shipData.numFloors) {
+        floorSelect.innerHTML = '';
+        for (let i = 1; i <= shipData.numFloors; i++) {
+            const option = document.createElement('option');
+            option.value = i;
+            option.textContent = `Floor ${i}`;
+            floorSelect.appendChild(option);
+        }
+    }
+
+    // Default block size: everything left, capped at what fits on one floor
+    const remaining = getRemainingCount(componentIndex);
+    const itemArea = calculateComponentArea(component);
+    const maxPerFloor = itemArea > 0 ? Math.max(1, Math.floor(getUsableFloorArea() / itemArea)) : 1;
+    const blockInput = document.getElementById('block-count');
+    blockInput.max = remaining;
+    blockInput.value = Math.min(remaining, maxPerFloor);
+
+    document.querySelector('input[name="allocation-mode"][value="single"]').checked = true;
+    updateAllocationUI();
+}
+
+/**
+ * Show or hide a modal row by id
+ */
+function setRowVisible(id, visible) {
+    const row = document.getElementById(id);
+    if (row) row.classList.toggle('hidden', !visible);
+}
+
+/**
+ * Update the modal's primary button label and enabled state
+ */
+function setPlaceButton(label, enabled) {
+    const btn = document.getElementById('modal-place-btn');
+    btn.textContent = label;
+    btn.disabled = !enabled;
+}
+
+/**
+ * Refresh the modal for the selected allocation mode
+ */
+function updateAllocationUI() {
+    const modal = document.getElementById('component-modal');
+    const componentIndex = parseInt(modal.dataset.componentIndex, 10);
+    const component = shipData.components[componentIndex];
+    if (!component) return;
+
+    const mode = getAllocationMode();
+    const remaining = getRemainingCount(componentIndex);
+    const total = component.quantity || 1;
+    const itemArea = calculateComponentArea(component);
+    const multiFloorSection = document.getElementById('multi-floor-section');
+    const floorSelect = document.getElementById('component-floor-select');
+    const preview = document.getElementById('allocation-preview');
+
+    document.getElementById('allocation-status').textContent =
+        `${total - remaining} of ${total} placed · ${remaining} remaining · ${formatArea(itemArea)} each`;
+
+    // Single mode restores the layout openComponentModal chose; the bulk modes
+    // always work on one floor at a time
+    const singleUsesMultiFloor = modal.dataset.singleUsesMultiFloor === 'true';
+    multiFloorSection.classList.toggle('hidden', !(mode === 'single' && singleUsesMultiFloor));
+    floorSelect.classList.toggle('hidden', mode === 'single' && singleUsesMultiFloor);
+    setRowVisible('dimensions-row', mode === 'single' || mode === 'block');
+    setRowVisible('floor-select-row', mode !== 'fill-region');
+
+    if (mode === 'single') {
+        preview.textContent = '';
+        preview.classList.remove('warning');
+        updateDimensionOptions();
+        setPlaceButton('Place Component', true);
+    } else if (mode === 'block') {
+        updateBlockOptions(componentIndex, component, itemArea, preview);
+    } else if (mode === 'fill-floor') {
+        document.getElementById('modal-area-display').classList.add('hidden');
+        updateFillFloorPreview(componentIndex, component, itemArea, remaining, preview);
+    } else {
+        document.getElementById('modal-area-display').classList.add('hidden');
+        preview.classList.remove('warning');
+        preview.textContent = remaining > 0
+            ? `Hover over free space on any floor to see its area and how many ${getItemDisplayName(component)} fit, ` +
+              'then click to assign them. Keep clicking regions until done; press Escape to stop.'
+            : 'All items are already placed.';
+        setPlaceButton('Pick Region on Map', remaining > 0);
+    }
+}
+
+/**
+ * Block mode: dimension options for a rectangle holding N items
+ */
+function updateBlockOptions(componentIndex, component, itemArea, preview) {
+    const count = getBlockCount(componentIndex);
+    const blockArea = count * itemArea;
+    const usableArea = getUsableFloorArea();
+    const dimSelect = document.getElementById('component-dimensions');
+    dimSelect.innerHTML = '';
+    document.getElementById('modal-area-display').classList.add('hidden');
+
+    if (blockArea > usableArea) {
+        const maxPerFloor = Math.floor(usableArea / itemArea);
+        preview.classList.add('warning');
+        preview.textContent = `A block of ${count} needs ${formatArea(blockArea)}, but a floor only has ` +
+            `${formatArea(usableArea)} usable. At most ${maxPerFloor} fit on one floor.`;
+        setPlaceButton('Place Block', false);
+        return;
+    }
+
+    const { floorArea, floorWidth, floorLength } = getCurrentFloorDimensions();
+    const blockTons = count * (component.tonsPerItem || component.tons);
+    const dimInfo = generateComponentDimensionOptions(
+        { ...component, tons: blockTons, tonsPerItem: blockTons },
+        floorArea, floorLength, floorWidth, 1
+    );
+    for (const opt of dimInfo.options) {
+        const option = document.createElement('option');
+        option.value = `${opt.length},${opt.width}`;
+        option.textContent = opt.label;
+        dimSelect.appendChild(option);
+    }
+
+    if (dimInfo.options.length === 0) {
+        preview.classList.add('warning');
+        preview.textContent = `No rectangle shape for ${count} items fits this floor layout. Try a different block size.`;
+        setPlaceButton('Place Block', false);
+        return;
+    }
+
+    preview.classList.remove('warning');
+    preview.textContent = `Block of ${count} × ${formatArea(itemArea)} = ${formatArea(blockArea)}. ` +
+        'Click the chosen floor to place it.';
+    setPlaceButton(`Place Block of ${count}`, true);
+}
+
+/**
+ * Fill-floor mode: show what filling the selected floor would do
+ */
+function updateFillFloorPreview(componentIndex, component, itemArea, remaining, preview) {
+    const floorIndex = parseInt(document.getElementById('component-floor-select').value, 10);
+    const name = getItemDisplayName(component);
+    if (!floorIndex || remaining <= 0) {
+        preview.textContent = remaining <= 0 ? 'All items are already placed.' : '';
+        setPlaceButton('Fill Floor', false);
+        return;
+    }
+
+    const analysis = analyzeFloorNow(floorIndex);
+    const summary = summarizeFreeSpace(analysis.regions, itemArea);
+    const plan = planFloorFill(analysis.regions, itemArea, remaining);
+    const assigned = plan.reduce((sum, a) => sum + a.count, 0);
+    const usedArea = plan.reduce((sum, a) => sum + a.area, 0);
+
+    if (assigned === 0) {
+        preview.classList.add('warning');
+        preview.textContent = `Floor ${floorIndex} has ${formatArea(summary.freeArea)} free, but no open area ` +
+            `large enough for one ${name} (${formatArea(itemArea)}).`;
+        setPlaceButton('Fill Floor', false);
+        return;
+    }
+
+    preview.classList.remove('warning');
+    const regionText = summary.regionCount === 1 ? '1 region' : `${summary.regionCount} regions`;
+    let text = `Floor ${floorIndex}: ${formatArea(summary.freeArea)} free in ${regionText}, room for ${summary.fits}. `;
+    if (assigned >= remaining) {
+        text += `All ${remaining} remaining will be packed into ${formatArea(usedArea)}.`;
+    } else {
+        text += `Assigns ${assigned} of ${remaining}, leaving ${remaining - assigned} for other floors.`;
+    }
+    preview.textContent = text;
+    setPlaceButton(`Fill Floor ${floorIndex} with ${assigned}`, true);
+}
+
+/**
+ * Execute fill-floor from the modal
+ */
+function executeFloorFill() {
+    const modal = document.getElementById('component-modal');
+    const componentIndex = parseInt(modal.dataset.componentIndex, 10);
+    const component = shipData.components[componentIndex];
+    const floorIndex = parseInt(document.getElementById('component-floor-select').value, 10);
+    if (!component || !floorIndex) return;
+
+    const analysis = analyzeFloorNow(floorIndex);
+    const plan = planFloorFill(analysis.regions, calculateComponentArea(component), getRemainingCount(componentIndex));
+    if (plan.length === 0) return;
+
+    closeComponentModal();
+    applyAllocations(componentIndex, floorIndex, plan);
+
+    // If the user is viewing a single floor, switch to the one just filled
+    const selector = document.getElementById('floor-selector');
+    if (selector && selector.value !== 'all') {
+        setFloorSelector(floorIndex);
+    }
+}
+
+// ========================================
+// Region Fill Mode (pick free regions on the map)
+// ========================================
+
+/**
+ * Enter region-picking mode from the modal
+ */
+function startRegionFillFromModal() {
+    const modal = document.getElementById('component-modal');
+    const componentIndex = parseInt(modal.dataset.componentIndex, 10);
+    closeComponentModal();
+    startRegionFill(componentIndex);
+}
+
+/**
+ * Enter region-picking mode for a component
+ */
+function startRegionFill(componentIndex) {
+    if (getRemainingCount(componentIndex) <= 0) return;
+
+    if (uiState.selectedPlacement) cancelSelection();
+    if (uiState.isPlacingComponent) cancelPlacement();
+
+    uiState.regionFill = {
+        componentIndex,
+        analyses: {},     // floorIndex -> free-space analysis (invalidated after each fill)
+        plans: {},        // "floor:region:direction" -> allocation plan
+        animationFrameId: null
+    };
+
+    for (let i = 1; i <= shipData.numFloors; i++) {
+        const canvas = document.getElementById(`floor-canvas-${i}`);
+        if (canvas) canvas.classList.add('placement-mode', 'region-fill-mode');
+    }
+    showRegionFillInstructions();
+}
+
+/**
+ * Leave region-picking mode
+ */
+function cancelRegionFill() {
+    const state = uiState.regionFill;
+    if (!state) return;
+    if (state.animationFrameId !== null) cancelAnimationFrame(state.animationFrameId);
+    uiState.regionFill = null;
+
+    const { floorLength, floorWidth } = getCurrentFloorDimensions();
+    for (let i = 1; i <= shipData.numFloors; i++) {
+        const canvas = document.getElementById(`floor-canvas-${i}`);
+        if (!canvas) continue;
+        canvas.classList.remove('placement-mode', 'region-fill-mode');
+        drawFloorWithComponents(canvas, i, floorLength, floorWidth,
+            shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
+    }
+
+    const instructions = document.getElementById('placement-instructions');
+    if (instructions) instructions.classList.add('hidden');
+}
+
+/**
+ * Cached free-space analysis for a floor during region mode
+ */
+function getRegionAnalysis(floorIndex) {
+    const state = uiState.regionFill;
+    if (!state.analyses[floorIndex]) {
+        state.analyses[floorIndex] = analyzeFloorNow(floorIndex);
+    }
+    return state.analyses[floorIndex];
+}
+
+/**
+ * Find the region and allocation plan under the mouse
+ * @returns {{region, plan, x, y, px, py}} Region/plan may be null
+ */
+function getRegionUnderMouse(event, floorIndex) {
+    const state = uiState.regionFill;
+    const canvas = event.target;
+    const rect = canvas.getBoundingClientRect();
+    const px = (event.clientX - rect.left) * (canvas.width / rect.width);
+    const py = (event.clientY - rect.top) * (canvas.height / rect.height);
+    const { floorLength } = getCurrentFloorDimensions();
+    const pixelsPerMeter = canvas.width / floorLength;
+    const x = px / pixelsPerMeter;
+    const y = py / pixelsPerMeter;
+
+    const region = findRegionAtPoint(getRegionAnalysis(floorIndex), x, y);
+    let plan = null;
+    if (region) {
+        // When only part of the region is needed, pack it against the edge
+        // nearest the cursor so it lands where the user is pointing
+        const direction = nearestSweepDirection(region.bbox, x, y);
+        const key = `${floorIndex}:${region.index}:${direction}`;
+        if (!(key in state.plans)) {
+            const component = shipData.components[state.componentIndex];
+            state.plans[key] = planRegionAllocation(region, calculateComponentArea(component),
+                getRemainingCount(state.componentIndex), direction);
+        }
+        plan = state.plans[key];
+    }
+    return { region, plan, x, y, px, py };
+}
+
+/**
+ * Mouse move over a canvas in region mode: highlight the region under the cursor
+ */
+function handleRegionHover(event, floorIndex) {
+    const state = uiState.regionFill;
+    const canvas = event.target;
+    const hover = getRegionUnderMouse(event, floorIndex);
+
+    if (state.animationFrameId === null) {
+        state.animationFrameId = requestAnimationFrame(() => {
+            state.animationFrameId = null;
+            if (uiState.regionFill !== state) return;
+            const { floorLength, floorWidth } = getCurrentFloorDimensions();
+            drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth,
+                shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
+            if (hover.region) {
+                drawRegionHover(canvas, hover, floorLength);
+            }
+        });
+    }
+}
+
+/**
+ * Mouse leaves a canvas in region mode: remove the highlight
+ */
+function handleRegionLeave(event, floorIndex) {
+    const { floorLength, floorWidth } = getCurrentFloorDimensions();
+    drawFloorWithComponents(event.target, floorIndex, floorLength, floorWidth,
+        shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
+}
+
+/**
+ * Click in region mode: assign items to the region under the cursor
+ */
+function handleRegionFillClick(event, floorIndex) {
+    const state = uiState.regionFill;
+    const canvas = event.target;
+    const { plan } = getRegionUnderMouse(event, floorIndex);
+
+    if (!plan) {
+        canvas.style.boxShadow = '0 0 20px red';
+        setTimeout(() => { canvas.style.boxShadow = ''; }, 300);
+        return;
+    }
+
+    applyAllocations(state.componentIndex, floorIndex, [plan]);
+
+    // Free space and remaining count changed: drop cached results
+    state.analyses = {};
+    state.plans = {};
+
+    if (getRemainingCount(state.componentIndex) <= 0) {
+        cancelRegionFill();
+    } else {
+        showRegionFillInstructions();
+    }
+}
+
+/**
+ * Draw the hovered region, the part that would be used, and an info label
+ */
+function drawRegionHover(canvas, hover, floorLength) {
+    const { region, plan, px, py } = hover;
+    const state = uiState.regionFill;
+    const component = shipData.components[state.componentIndex];
+    const name = getItemDisplayName(component);
+    const itemArea = calculateComponentArea(component);
+    const remaining = getRemainingCount(state.componentIndex);
+    const ctx = canvas.getContext('2d');
+    const ppm = canvas.width / floorLength;
+    const toPx = r => [r.x * ppm, r.y * ppm, r.length * ppm, r.width * ppm];
+
+    // Whole free region
+    ctx.fillStyle = plan ? 'rgba(0, 212, 255, 0.18)' : 'rgba(255, 82, 82, 0.25)';
+    for (const r of region.rects) ctx.fillRect(...toPx(r));
+
+    // Portion that would be assigned
+    if (plan) {
+        ctx.fillStyle = 'rgba(0, 230, 118, 0.35)';
+        ctx.strokeStyle = 'rgba(0, 230, 118, 0.9)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        for (const r of plan.rects) {
+            ctx.fillRect(...toPx(r));
+            ctx.strokeRect(...toPx(r));
+        }
+        ctx.setLineDash([]);
+    }
+
+    // Info label near the cursor
+    const fits = Math.floor((region.area + 1e-6) / itemArea);
+    const lines = [`Free region: ${formatArea(region.area)}`];
+    if (!plan) {
+        lines.push(`Too small for one ${name} (${formatArea(itemArea)})`);
+    } else if (fits > plan.count) {
+        lines.push(`Room for ${fits}; click to pack all ${plan.count} remaining`);
+    } else {
+        lines.push(`Click to assign ${plan.count} ${name} (${remaining - plan.count} left after)`);
+    }
+    drawInfoLabel(ctx, lines, px, py, canvas.width, canvas.height);
+}
+
+/**
+ * Draw a small multi-line info box near a point, kept inside the canvas
+ */
+function drawInfoLabel(ctx, lines, px, py, canvasWidth, canvasHeight) {
+    ctx.font = '13px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    const lineHeight = 18;
+    const padding = 8;
+    const boxWidth = Math.max(...lines.map(l => ctx.measureText(l).width)) + padding * 2;
+    const boxHeight = lines.length * lineHeight + padding * 2 - 4;
+
+    let bx = px + 16;
+    let by = py + 16;
+    if (bx + boxWidth > canvasWidth) bx = px - boxWidth - 16;
+    if (by + boxHeight > canvasHeight) by = py - boxHeight - 16;
+    bx = Math.max(2, bx);
+    by = Math.max(2, by);
+
+    ctx.fillStyle = 'rgba(10, 10, 26, 0.92)';
+    ctx.fillRect(bx, by, boxWidth, boxHeight);
+    ctx.strokeStyle = 'rgba(0, 212, 255, 0.8)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx, by, boxWidth, boxHeight);
+
+    ctx.fillStyle = '#e8eaf6';
+    lines.forEach((line, i) => ctx.fillText(line, bx + padding, by + padding + i * lineHeight));
+}
+
+/**
+ * Instruction banner for region mode
+ */
+function showRegionFillInstructions() {
+    const state = uiState.regionFill;
+    if (!state) return;
+    const component = shipData.components[state.componentIndex];
+    let instructions = document.getElementById('placement-instructions');
+    if (!instructions) {
+        instructions = document.createElement('div');
+        instructions.id = 'placement-instructions';
+        instructions.className = 'placement-instructions';
+        document.body.appendChild(instructions);
+    }
+    instructions.textContent = `Filling regions with ${getItemDisplayName(component)} ` +
+        `(${getRemainingCount(state.componentIndex)} remaining). Click a free area to assign; Escape to finish.`;
+    instructions.classList.remove('hidden');
+}
+
+// ========================================
+// Event Setup
+// ========================================
+
+/**
+ * Wire up allocation controls in the component modal (called once at startup)
+ */
+function setupAllocationEvents() {
+    document.querySelectorAll('input[name="allocation-mode"]').forEach(radio => {
+        radio.addEventListener('change', updateAllocationUI);
+    });
+
+    const blockInput = document.getElementById('block-count');
+    const selectBlockMode = () => {
+        document.querySelector('input[name="allocation-mode"][value="block"]').checked = true;
+        updateAllocationUI();
+    };
+    blockInput.addEventListener('input', selectBlockMode);
+    blockInput.addEventListener('focus', selectBlockMode);
+
+    document.getElementById('component-floor-select').addEventListener('change', () => {
+        if (getAllocationMode() === 'fill-floor') updateAllocationUI();
+    });
+}

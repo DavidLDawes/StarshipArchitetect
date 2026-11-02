@@ -8,6 +8,7 @@ module.exports = {
     'src/floor-utils.js',
     'src/component-dimensions.js',
     'src/placement-logic.js',
+    'src/placement-geometry.js',
   ],
   coverageThreshold: {
     global: { lines: 70, functions: 70, branches: 55 }

@@ -7,6 +7,7 @@
  * - floor-utils.js (getCurrentFloorDimensions)
  * - placement-controller.js (placement orchestration happens there)
  * - undo-redo.js (history management)
+ * - bulk-allocation.js (block / fill-floor / fill-region allocation modes)
  */
 
 // ========================================
@@ -82,6 +83,9 @@ function updateAreaDisplay(totalArea, numFloors, areaPerFloor) {
 function openComponentModal(componentIndex) {
     const component = shipData.components[componentIndex];
     if (!component) return;
+
+    // Opening a new component ends any region picking in progress
+    cancelRegionFill();
 
     uiState.selectedComponent = componentIndex;
 
@@ -203,6 +207,9 @@ function openComponentModal(componentIndex) {
     modal.dataset.isLargeItem = isLargeItem;
     modal.dataset.componentIndex = componentIndex;
 
+    // Allocation options for multi-quantity components (blocks, fill floor, fill region)
+    setupAllocationSection(componentIndex);
+
     // Show modal
     modal.classList.remove('hidden');
 }
@@ -222,6 +229,20 @@ function closeComponentModal() {
 function startPlacement() {
     const modal = document.getElementById('component-modal');
     const componentIndex = parseInt(modal.dataset.componentIndex);
+
+    // Bulk modes that don't need a rectangle placed by clicking
+    const mode = getAllocationMode();
+    if (mode === 'fill-floor') {
+        executeFloorFill();
+        return;
+    }
+    if (mode === 'fill-region') {
+        startRegionFillFromModal();
+        return;
+    }
+    const isBlock = mode === 'block';
+    const blockCount = isBlock ? getBlockCount(componentIndex) : 1;
+
     const dimSelect = document.getElementById('component-dimensions');
     const dimValue = dimSelect.value;
     const parts = dimValue.split(',');
@@ -233,9 +254,10 @@ function startPlacement() {
         return;
     }
 
-    // Determine which floors
+    // Determine which floors (blocks always go on the single selected floor)
     let selectedFloors = [];
-    if (modal.dataset.isMultiFloor === 'true') {
+    const isMultiFloor = !isBlock && modal.dataset.isMultiFloor === 'true';
+    if (isMultiFloor) {
         const checkboxes = document.querySelectorAll('input[name="component-floors"]:checked');
         selectedFloors = Array.from(checkboxes).map(cb => parseInt(cb.value));
 
@@ -262,9 +284,10 @@ function startPlacement() {
         componentIndex,
         length,
         width,
+        count: blockCount,
         floors: selectedFloors,
         currentFloorIndex: 0,
-        isMultiFloor: modal.dataset.isMultiFloor === 'true'
+        isMultiFloor: isMultiFloor
     };
 
     // Auto-select the first floor in the floor selector dropdown
@@ -286,8 +309,11 @@ function startPlacement() {
     // Show placement instructions
     const component = shipData.components[componentIndex];
     const totalQuantity = component.quantity || 1;
-    if (totalQuantity > 1) {
-        showPlacementInstructionsMulti(selectedFloors, component.itemName || component.item, totalQuantity, totalQuantity);
+    if (blockCount > 1) {
+        showBlockPlacementInstructions(selectedFloors, component.itemName || component.item, blockCount);
+    } else if (totalQuantity > 1) {
+        const remaining = totalQuantity - getPlacedCount(shipData.componentPlacements[componentIndex]);
+        showPlacementInstructionsMulti(selectedFloors, component.itemName || component.item, remaining, totalQuantity);
     } else {
         showPlacementInstructions(selectedFloors);
     }
@@ -334,6 +360,23 @@ function showPlacementInstructionsMulti(floors, itemName, remaining, total) {
     instructions.classList.remove('hidden');
 }
 
+/**
+ * Show placement instructions for a block of several items
+ */
+function showBlockPlacementInstructions(floors, itemName, count) {
+    let instructions = document.getElementById('placement-instructions');
+    if (!instructions) {
+        instructions = document.createElement('div');
+        instructions.id = 'placement-instructions';
+        instructions.className = 'placement-instructions';
+        document.body.appendChild(instructions);
+    }
+
+    const floorText = floors.length === 1 ? `Floor ${floors[0]}` : 'a floor';
+    instructions.textContent = `Click on ${floorText} to place a block of ${count} ${itemName}. Press Escape to cancel.`;
+    instructions.classList.remove('hidden');
+}
+
 // ========================================
 // Event Listeners Setup
 // ========================================
@@ -351,14 +394,19 @@ function setupComponentModalEvents() {
     // Place button
     document.getElementById('modal-place-btn').addEventListener('click', startPlacement);
 
+    // Allocation mode controls (multi-quantity components)
+    setupAllocationEvents();
+
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
-        // Escape priority: resize → selection → placement → modal
+        // Escape priority: resize → selection → region fill → placement → modal
         if (e.key === 'Escape') {
             if (resizeState && resizeState.isResizing) {
                 cancelResize();
             } else if (uiState.selectedPlacement) {
                 cancelSelection();
+            } else if (uiState.regionFill) {
+                cancelRegionFill();
             } else if (uiState.isPlacingComponent) {
                 cancelPlacement();
             } else {

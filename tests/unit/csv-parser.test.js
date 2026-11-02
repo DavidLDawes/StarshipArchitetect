@@ -166,6 +166,23 @@ describe('parseCSV', () => {
     expect(result.components[0].tonsPerItem).toBeCloseTo(2);
   });
 
+  test('quantity parsing: parenthesized "(x140)" variant', () => {
+    const csv = 'Category,Item,Tons,Cost\nBerths,Staterooms (x140),560,70\n,Commissary (x2),4,0.4';
+    const result = parseCSV(csv);
+    expect(result.components[0].quantity).toBe(140);
+    expect(result.components[0].tonsPerItem).toBeCloseTo(4);
+    expect(result.components[0].itemName).toBe('Staterooms');
+    expect(result.components[1].quantity).toBe(2);
+    expect(result.components[1].itemName).toBe('Commissary');
+  });
+
+  test('quantity parsing: parentheses without a quantity are left alone', () => {
+    const csv = 'Category,Item,Tons,Cost\nCargo,Cargo Bay (2 tons),2,0';
+    const result = parseCSV(csv);
+    expect(result.components[0].quantity).toBe(1);
+    expect(result.components[0].itemName).toBe('Cargo Bay (2 tons)');
+  });
+
   test('single-item component: tonsPerItem equals tons', () => {
     const csv = 'Category,Item,Tons,Cost\nBridge,Control Room,20,1';
     const result = parseCSV(csv);

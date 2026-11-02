@@ -10,6 +10,25 @@ Starship Architect is a tool used to architect Traveler SRD starships. Using thi
 - **File Upload**: Upload a .CSV file with columns: Category, Item, Tons, Cost
 - **URL Parameters**: Load ship designs directly from URL-encoded CSV data (see below)
 
+### Allocating Items That Come in Quantity
+
+Items listed with a quantity (`Staterooms x10` or `Staterooms (x140)`) such as
+staterooms on a liner or turrets on a warship can be split across several
+rectangles on the same or different floors. Click the component and choose:
+
+- **One at a time**: place each item individually (the original behavior).
+- **A block of N items as one rectangle**: choose N and a shape, then click a floor.
+- **Fill the rest of the selected floor**: the floor's free space is measured and
+  as many items as fit are assigned to it. If the floor has more room than you
+  need, the remaining items are packed into part of the free space instead.
+- **Fill a free region (pick it on the map)**: hover over any free area, including
+  odd-shaped leftovers around other components, to see its area and how many items
+  fit, then click to assign them. Keep clicking regions until done; Escape stops.
+
+The component list shows how many are placed per floor (e.g. `Placed 80 of 140 (F1: 60, F2: 20)`)
+so the remainder can be accounted for on other floors. Region allocations can be
+selected and deleted, and all of these actions support undo/redo (Ctrl+Z / Ctrl+Shift+Z).
+
 ### URL Loading & Sharing
 
 You can load ship designs directly via URL parameters, enabling deep linking, bookmarking, and sharing:
@@ -42,11 +61,11 @@ The project has unit tests and ESLint configured, with GitHub Actions running bo
 
 ```bash
 npm run lint           # ESLint — zero warnings expected
-npm run test           # Jest unit tests (149 tests)
+npm run test           # Jest unit tests
 npm run test:coverage  # Jest with Istanbul coverage report
 ```
 
-Coverage thresholds (enforced by `jest.config.js`): **70% lines, 70% functions, 55% branches** across the four pure-logic modules (`csv-parser.js`, `floor-utils.js`, `component-dimensions.js`, `placement-logic.js`). Current coverage significantly exceeds those thresholds (~90% lines).
+Coverage thresholds (enforced by `jest.config.js`): **70% lines, 70% functions, 55% branches** across the pure-logic modules (`csv-parser.js`, `floor-utils.js`, `component-dimensions.js`, `placement-logic.js`, `placement-geometry.js`). Current coverage significantly exceeds those thresholds (~90% lines).
 
 DOM-dependent functions (`finishPlacement`, `cancelPlacement`, all canvas rendering) are intentionally excluded from coverage collection.
 

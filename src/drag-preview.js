@@ -94,6 +94,12 @@ function drawPreview(canvas, floorIndex, length, width) {
  * @param {number} floorIndex - Floor number (1-based)
  */
 function handleCanvasMouseMove(event, floorIndex) {
+    // Region picking draws its own hover highlight
+    if (uiState.regionFill) {
+        handleRegionHover(event, floorIndex);
+        return;
+    }
+
     // Only show preview during placement or move mode
     if (!uiState.isPlacingComponent && !uiState.selectedPlacement) {
         clearPreview();
@@ -114,8 +120,12 @@ function handleCanvasMouseMove(event, floorIndex) {
         compWidth = data.width;
         excludeIndex = -1;
     } else if (uiState.selectedPlacement) {
-        // Move mode
+        // Move mode (region shapes can't be moved, so no preview)
         const sel = uiState.selectedPlacement;
+        if (sel.isShape) {
+            clearPreview();
+            return;
+        }
         compLength = sel.length;
         compWidth = sel.width;
         excludeIndex = sel.componentIndex;
@@ -180,6 +190,11 @@ function handleCanvasMouseMove(event, floorIndex) {
  * Handle mouseleave on canvas - clear preview
  */
 function handleCanvasMouseLeave(event, floorIndex) {
+    if (uiState.regionFill) {
+        handleRegionLeave(event, floorIndex);
+        return;
+    }
+
     if (previewState.isActive && previewState.floorIndex === floorIndex) {
         clearPreview();
 

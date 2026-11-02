@@ -512,6 +512,7 @@ function handleResizeMouseMove(event, floorIndex) {
         if (!placement || !placement.floors || !placement.floors[sel.placementIndex]) return;
 
         const pos = placement.floors[sel.placementIndex];
+        if (pos.rects) return; // region shapes keep their fitted outline
         const placementData = {
             x: pos.x,
             y: pos.y,
@@ -548,6 +549,7 @@ function handleResizeMouseDown(event, floorIndex) {
     if (!placement || !placement.floors || !placement.floors[sel.placementIndex]) return;
 
     const pos = placement.floors[sel.placementIndex];
+    if (pos.rects) return; // region shapes keep their fitted outline
     const placementData = {
         x: pos.x,
         y: pos.y,
