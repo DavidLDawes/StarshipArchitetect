@@ -17,6 +17,7 @@ let previewState = {
     length: null,
     width: null,
     excludeComponentIndex: -1, // For move operations, which component to exclude from overlap check
+    requireHull: false, // Component must touch the outer hull (weapons, vehicles, launch bays)
     animationFrameId: null // For throttling redraws
 };
 
@@ -66,7 +67,17 @@ function drawPreview(canvas, floorIndex, length, width) {
         previewState.excludeComponentIndex
     );
 
-    const isValid = within && noOverlap;
+    const onHull = !previewState.requireHull || touchesHull(
+        previewState.x,
+        previewState.y,
+        previewState.length,
+        previewState.width,
+        length,
+        width,
+        armorThickness
+    );
+
+    const isValid = within && noOverlap && onHull;
 
     // Preview colors based on validity
     const fillColor = isValid ? 'rgba(0, 255, 100, 0.3)' : 'rgba(255, 0, 0, 0.3)';
@@ -107,7 +118,7 @@ function handleCanvasMouseMove(event, floorIndex) {
     }
 
     // Get component dimensions for preview
-    let compLength, compWidth, excludeIndex;
+    let compLength, compWidth, excludeIndex, componentIndex;
 
     if (uiState.isPlacingComponent) {
         // Placement mode
@@ -119,6 +130,7 @@ function handleCanvasMouseMove(event, floorIndex) {
         compLength = data.length;
         compWidth = data.width;
         excludeIndex = -1;
+        componentIndex = data.componentIndex;
     } else if (uiState.selectedPlacement) {
         // Move mode (region shapes can't be moved, so no preview)
         const sel = uiState.selectedPlacement;
@@ -129,6 +141,7 @@ function handleCanvasMouseMove(event, floorIndex) {
         compLength = sel.length;
         compWidth = sel.width;
         excludeIndex = sel.componentIndex;
+        componentIndex = sel.componentIndex;
     } else {
         clearPreview();
         return;
@@ -163,6 +176,13 @@ function handleCanvasMouseMove(event, floorIndex) {
     previewX = Math.max(armorThickness, Math.min(previewX, floorLength - compLength - armorThickness));
     previewY = Math.max(armorThickness, Math.min(previewY, floorWidth - compWidth - armorThickness));
 
+    // Hull components (weapons, vehicles, launch bays) follow the nearest hull side
+    const requireHull = requiresHullAccess(shipData.components[componentIndex]);
+    if (requireHull) {
+        ({ x: previewX, y: previewY } = snapToHullEdge(previewX, previewY, compLength, compWidth,
+            floorLength, floorWidth, armorThickness));
+    }
+
     // Do not snap to 1m grid here — allow fine-grained (sub-meter) preview movement
     // Keep previewX/previewY as floating values for pixel-precise placement
 
@@ -174,6 +194,7 @@ function handleCanvasMouseMove(event, floorIndex) {
     previewState.length = compLength;
     previewState.width = compWidth;
     previewState.excludeComponentIndex = excludeIndex;
+    previewState.requireHull = requireHull;
 
     // Throttle redraws using requestAnimationFrame
     if (previewState.animationFrameId === null) {
@@ -222,6 +243,7 @@ function clearPreview() {
     previewState.length = null;
     previewState.width = null;
     previewState.excludeComponentIndex = -1;
+    previewState.requireHull = false;
 }
 
 // ========================================

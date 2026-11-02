@@ -7,7 +7,8 @@
  * - floor-utils.js (getCurrentFloorDimensions)
  * - placement-controller.js (placement orchestration happens there)
  * - undo-redo.js (history management)
- * - bulk-allocation.js (block / fill-floor / fill-region allocation modes)
+ * - bulk-allocation.js (block / fill-floor / fill-region / fill-exposed allocation modes)
+ * - hull-access.js (requiresHullAccess: weapons, vehicles, launch bays go on the hull)
  */
 
 // ========================================
@@ -108,6 +109,7 @@ function openComponentModal(componentIndex) {
         <span>📦 ${component.tons} tons</span>
         <span>📐 ${dimInfo.componentArea.toFixed(1)} m²</span>
         <span>💰 ${component.cost.toLocaleString()} MCr</span>
+        ${requiresHullAccess(component) ? '<span class="hull-badge" title="Needs access to space: must touch the outer hull">🛰️ Outer hull</span>' : ''}
     `;
 
     // Populate dimension dropdown
@@ -240,6 +242,10 @@ function startPlacement() {
         startRegionFillFromModal();
         return;
     }
+    if (mode === 'fill-exposed') {
+        executeExposedFill();
+        return;
+    }
     const isBlock = mode === 'block';
     const blockCount = isBlock ? getBlockCount(componentIndex) : 1;
 
@@ -324,6 +330,15 @@ function startPlacement() {
 // ========================================
 
 /**
+ * Extra instruction text when the component being placed must touch the hull
+ */
+function hullPlacementHint() {
+    const data = uiState.placementData;
+    const component = data && shipData.components[data.componentIndex];
+    return requiresHullAccess(component) ? ' It must touch the outer hull and snaps to the nearest hull side.' : '';
+}
+
+/**
  * Show placement instructions
  */
 function showPlacementInstructions(floors) {
@@ -339,7 +354,7 @@ function showPlacementInstructions(floors) {
         ? `Floor ${floors[0]}`
         : `Floors ${floors.join(', ')}`;
 
-    instructions.textContent = `Click on ${floorText} to place the component. Press Escape to cancel.`;
+    instructions.textContent = `Click on ${floorText} to place the component.${hullPlacementHint()} Press Escape to cancel.`;
     instructions.classList.remove('hidden');
 }
 
@@ -356,7 +371,7 @@ function showPlacementInstructionsMulti(floors, itemName, remaining, total) {
     }
 
     const placed = total - remaining;
-    instructions.textContent = `Placing ${itemName} (${placed + 1} of ${total}). Click any floor to place. Press Escape to cancel.`;
+    instructions.textContent = `Placing ${itemName} (${placed + 1} of ${total}). Click any floor to place.${hullPlacementHint()} Press Escape to cancel.`;
     instructions.classList.remove('hidden');
 }
 
@@ -373,7 +388,7 @@ function showBlockPlacementInstructions(floors, itemName, count) {
     }
 
     const floorText = floors.length === 1 ? `Floor ${floors[0]}` : 'a floor';
-    instructions.textContent = `Click on ${floorText} to place a block of ${count} ${itemName}. Press Escape to cancel.`;
+    instructions.textContent = `Click on ${floorText} to place a block of ${count} ${itemName}.${hullPlacementHint()} Press Escape to cancel.`;
     instructions.classList.remove('hidden');
 }
 

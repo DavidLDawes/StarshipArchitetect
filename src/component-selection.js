@@ -208,6 +208,12 @@ function handleComponentMove(event, floorIndex) {
     newX = Math.max(armorThickness, Math.min(newX, floorLength - sel.length - armorThickness));
     newY = Math.max(armorThickness, Math.min(newY, floorWidth - sel.width - armorThickness));
 
+    // Weapons, vehicles, and launch bays stay against the outer hull
+    if (requiresHullAccess(shipData.components[sel.componentIndex])) {
+        ({ x: newX, y: newY } = snapToHullEdge(newX, newY, sel.length, sel.width,
+            floorLength, floorWidth, armorThickness));
+    }
+
     // Do not round here — allow fine-grained movement when dragging selected components
 
     // Remove the old placement temporarily to check overlap
@@ -291,6 +297,18 @@ function rotateSelectedComponent() {
     }
     newX = Math.max(armorThickness, newX);
     newY = Math.max(armorThickness, newY);
+
+    // Hull components keep their hull side: re-anchor to the side they were on
+    // (a component on the right or bottom hull would otherwise drift off it)
+    if (requiresHullAccess(shipData.components[sel.componentIndex])) {
+        const sides = getHullSides(pos.x, pos.y, sel.length, sel.width, floorLength, floorWidth, armorThickness);
+        if (sides.includes('right')) newX = floorLength - armorThickness - newLength;
+        if (sides.includes('bottom')) newY = floorWidth - armorThickness - newWidth;
+        if (!touchesHull(newX, newY, newLength, newWidth, floorLength, floorWidth, armorThickness)) {
+            ({ x: newX, y: newY } = snapToHullEdge(newX, newY, newLength, newWidth,
+                floorLength, floorWidth, armorThickness));
+        }
+    }
 
     // Temporarily remove to check overlap
     placement.floors.splice(sel.placementIndex, 1);

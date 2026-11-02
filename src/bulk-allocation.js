@@ -7,9 +7,15 @@
  *   fill-floor  — consume the free space on a chosen floor with as many items as fit
  *   fill-region — pick an odd-shaped free region on the map; it is measured and
  *                 assigned however many items fit
+ *   fill-exposed — line the free stretches of outer hull on a chosen floor with
+ *                 items (weapons, vehicles, launch bays: see hull-access.js)
+ *
+ * Components that need hull access get single / block / fill-exposed; all
+ * others get single / block / fill-floor / fill-region.
  *
  * Dependencies:
  * - placement-geometry.js (free-space analysis and allocation planning)
+ * - hull-access.js (requiresHullAccess, planExposedFill)
  * - component-dimensions.js (calculateComponentArea, generateComponentDimensionOptions)
  * - component-modal.js (modal elements, updateDimensionOptions, closeComponentModal)
  * - canvas-renderer.js (drawFloorWithComponents)
@@ -139,6 +145,8 @@ function setupAllocationSection(componentIndex) {
     // Remember the single-item layout openComponentModal chose, to restore it
     modal.dataset.singleUsesMultiFloor = String(!multiFloorSection.classList.contains('hidden'));
 
+    modal.dataset.hullAccess = String(requiresHullAccess(component));
+
     const total = component ? component.quantity || 1 : 1;
     if (total <= 1) {
         section.classList.add('hidden');
@@ -149,6 +157,13 @@ function setupAllocationSection(componentIndex) {
     }
 
     section.classList.remove('hidden');
+
+    // Hull components (weapons, vehicles, launch bays) fill exposed hull instead
+    // of free floor space; show only the modes that apply
+    const hull = modal.dataset.hullAccess === 'true';
+    section.querySelectorAll('.allocation-mode[data-scope]').forEach(label => {
+        label.classList.toggle('hidden', (label.dataset.scope === 'hull') !== hull);
+    });
 
     // Ensure the single-floor dropdown is populated (large items skip it)
     if (floorSelect.options.length !== shipData.numFloors) {
@@ -207,16 +222,20 @@ function updateAllocationUI() {
     const floorSelect = document.getElementById('component-floor-select');
     const preview = document.getElementById('allocation-preview');
 
+    const hull = modal.dataset.hullAccess === 'true';
     document.getElementById('allocation-status').textContent =
-        `${total - remaining} of ${total} placed · ${remaining} remaining · ${formatArea(itemArea)} each`;
+        `${total - remaining} of ${total} placed · ${remaining} remaining · ${formatArea(itemArea)} each` +
+        (hull ? ' · must touch the outer hull' : '');
 
     // Single mode restores the layout openComponentModal chose; the bulk modes
     // always work on one floor at a time
     const singleUsesMultiFloor = modal.dataset.singleUsesMultiFloor === 'true';
     multiFloorSection.classList.toggle('hidden', !(mode === 'single' && singleUsesMultiFloor));
     floorSelect.classList.toggle('hidden', mode === 'single' && singleUsesMultiFloor);
-    setRowVisible('dimensions-row', mode === 'single' || mode === 'block');
+    setRowVisible('dimensions-row', mode === 'single' || mode === 'block' || mode === 'fill-exposed');
     setRowVisible('floor-select-row', mode !== 'fill-region');
+    document.getElementById('dimensions-label').textContent =
+        mode === 'fill-exposed' ? 'Item size (along hull × depth):' : 'Dimensions:';
 
     if (mode === 'single') {
         preview.textContent = '';
@@ -228,6 +247,10 @@ function updateAllocationUI() {
     } else if (mode === 'fill-floor') {
         document.getElementById('modal-area-display').classList.add('hidden');
         updateFillFloorPreview(componentIndex, component, itemArea, remaining, preview);
+    } else if (mode === 'fill-exposed') {
+        document.getElementById('modal-area-display').classList.add('hidden');
+        populateItemSizeOptions(component);
+        updateFillExposedPreview();
     } else {
         document.getElementById('modal-area-display').classList.add('hidden');
         preview.classList.remove('warning');
@@ -281,7 +304,9 @@ function updateBlockOptions(componentIndex, component, itemArea, preview) {
 
     preview.classList.remove('warning');
     preview.textContent = `Block of ${count} × ${formatArea(itemArea)} = ${formatArea(blockArea)}. ` +
-        'Click the chosen floor to place it.';
+        (requiresHullAccess(component)
+            ? 'Click the chosen floor; the block snaps to the nearest stretch of outer hull.'
+            : 'Click the chosen floor to place it.');
     setPlaceButton(`Place Block of ${count}`, true);
 }
 
@@ -335,6 +360,122 @@ function executeFloorFill() {
 
     const analysis = analyzeFloorNow(floorIndex);
     const plan = planFloorFill(analysis.regions, calculateComponentArea(component), getRemainingCount(componentIndex));
+    if (plan.length === 0) return;
+
+    closeComponentModal();
+    applyAllocations(componentIndex, floorIndex, plan);
+
+    // If the user is viewing a single floor, switch to the one just filled
+    const selector = document.getElementById('floor-selector');
+    if (selector && selector.value !== 'all') {
+        setFloorSelector(floorIndex);
+    }
+}
+
+// ========================================
+// Fill Exposed Areas (hull components)
+// ========================================
+
+/**
+ * Fill the item-size dropdown with shapes for ONE item; in fill-exposed mode the
+ * first number is the size along the hull and the second the depth inboard
+ */
+function populateItemSizeOptions(component) {
+    const { floorArea, floorWidth, floorLength } = getCurrentFloorDimensions();
+    const single = { ...component, tons: component.tonsPerItem || component.tons };
+    const dimInfo = generateComponentDimensionOptions(single, floorArea, floorLength, floorWidth, 1);
+    const options = dimInfo.options.slice();
+
+    // Very small items fall under the generator's 1 m minimum: offer a square
+    if (options.length === 0 && dimInfo.componentArea > 0) {
+        const side = Math.sqrt(dimInfo.componentArea);
+        options.push({ length: side, width: side, label: `${side.toFixed(1)} × ${side.toFixed(1)} m` });
+    }
+
+    const dimSelect = document.getElementById('component-dimensions');
+    dimSelect.innerHTML = '';
+    for (const opt of options) {
+        const option = document.createElement('option');
+        option.value = `${opt.length},${opt.width}`;
+        option.textContent = opt.label;
+        dimSelect.appendChild(option);
+    }
+}
+
+/**
+ * Selected item size for fill-exposed: { along, depth } or null
+ */
+function getItemSize() {
+    const [along, depth] = document.getElementById('component-dimensions').value.split(',').map(parseFloat);
+    return along > 0 && depth > 0 ? { along, depth } : null;
+}
+
+/**
+ * Plan lining the free hull of a floor with a component's remaining items
+ * @returns {Array<object>} Allocations from planExposedFill
+ */
+function planExposedFillForFloor(componentIndex, floorIndex, size, remaining = getRemainingCount(componentIndex)) {
+    const { floorLength, floorWidth } = getCurrentFloorDimensions();
+    const bounds = getHullBounds(floorLength, floorWidth, shipData.armorThickness || 0);
+    return planExposedFill(bounds, getOccupiedRects(floorIndex), size.along, size.depth, remaining);
+}
+
+/**
+ * Fill-exposed mode: show what lining the selected floor's hull would do
+ */
+function updateFillExposedPreview() {
+    const modal = document.getElementById('component-modal');
+    const componentIndex = parseInt(modal.dataset.componentIndex, 10);
+    const component = shipData.components[componentIndex];
+    if (!component) return;
+
+    const preview = document.getElementById('allocation-preview');
+    const floorIndex = parseInt(document.getElementById('component-floor-select').value, 10);
+    const remaining = getRemainingCount(componentIndex);
+    const size = getItemSize();
+
+    if (remaining <= 0 || !floorIndex || !size) {
+        preview.classList.toggle('warning', remaining > 0);
+        preview.textContent = remaining <= 0 ? 'All items are already placed.' : 'Choose an item size.';
+        setPlaceButton('Fill Exposed Areas', false);
+        return;
+    }
+
+    const name = getItemDisplayName(component);
+    const capacity = planExposedFillForFloor(componentIndex, floorIndex, size, Infinity)
+        .reduce((sum, a) => sum + a.count, 0);
+    const plan = planExposedFillForFloor(componentIndex, floorIndex, size, remaining);
+    const assigned = plan.reduce((sum, a) => sum + a.count, 0);
+
+    if (assigned === 0) {
+        preview.classList.add('warning');
+        preview.textContent = `Floor ${floorIndex} has no free stretch of outer hull ${size.along.toFixed(1)} m long ` +
+            `and ${size.depth.toFixed(1)} m deep for one ${name}. Try another floor or item size.`;
+        setPlaceButton('Fill Exposed Areas', false);
+        return;
+    }
+
+    preview.classList.remove('warning');
+    const blocks = plan.length === 1 ? '1 block' : `${plan.length} blocks`;
+    let text = `Floor ${floorIndex}: the free outer hull has room for ${capacity}. `;
+    text += assigned >= remaining
+        ? `All ${remaining} remaining go in ${blocks} along the hull.`
+        : `Assigns ${assigned} of ${remaining} in ${blocks}, leaving ${remaining - assigned} for other floors.`;
+    preview.textContent = text;
+    setPlaceButton(`Fill Floor ${floorIndex} Hull with ${assigned}`, true);
+}
+
+/**
+ * Execute fill-exposed from the modal
+ */
+function executeExposedFill() {
+    const modal = document.getElementById('component-modal');
+    const componentIndex = parseInt(modal.dataset.componentIndex, 10);
+    const floorIndex = parseInt(document.getElementById('component-floor-select').value, 10);
+    const size = getItemSize();
+    if (!shipData.components[componentIndex] || !floorIndex || !size) return;
+
+    const plan = planExposedFillForFloor(componentIndex, floorIndex, size);
     if (plan.length === 0) return;
 
     closeComponentModal();
@@ -620,6 +761,12 @@ function setupAllocationEvents() {
     blockInput.addEventListener('focus', selectBlockMode);
 
     document.getElementById('component-floor-select').addEventListener('change', () => {
-        if (getAllocationMode() === 'fill-floor') updateAllocationUI();
+        const mode = getAllocationMode();
+        if (mode === 'fill-floor') updateAllocationUI();
+        else if (mode === 'fill-exposed') updateFillExposedPreview();
+    });
+
+    document.getElementById('component-dimensions').addEventListener('change', () => {
+        if (getAllocationMode() === 'fill-exposed') updateFillExposedPreview();
     });
 }

@@ -27,6 +27,7 @@ src/                # JavaScript source modules
   csv-parser.js     # CSV parsing
   floor-utils.js    # Floor dimension calculations
   placement-geometry.js # Placement shapes/counts, free-space regions, fill planning
+  hull-access.js    # Which components must touch the outer hull; hull snapping; exposed-hull fill planning
   canvas-renderer.js
   component-dimensions.js
   placement-logic.js
@@ -36,12 +37,12 @@ src/                # JavaScript source modules
   drag-preview.js
   placement-controller.js
   component-modal.js
-  bulk-allocation.js # Block / fill-floor / fill-region modes for multi-quantity items
+  bulk-allocation.js # Block / fill-floor / fill-region / fill-exposed modes for multi-quantity items
   floor-selector.js
 data/               # Sample CSV ship designs
 tests/              # Manual test HTML pages and JS test scripts
-  unit/             # Jest unit tests (csv-parser, floor-utils, component-dimensions, placement-logic, placement-geometry)
-  jest-setup.js     # Global stubs for shipData / uiState / constants; exposes placement-geometry helpers as globals
+  unit/             # Jest unit tests (csv-parser, floor-utils, component-dimensions, placement-logic, placement-geometry, hull-access)
+  jest-setup.js     # Global stubs for shipData / uiState / constants; exposes placement-geometry and hull-access helpers as globals
 docs/               # Implementation notes and design docs
 .github/workflows/  # CI: lint + test/coverage jobs on every push/PR
 jest.config.js      # Jest config (node env, coverage thresholds 70/70/55)
@@ -54,8 +55,9 @@ jest.config.js      # Jest config (node env, coverage thresholds 70/70/55)
 - Global state in `shipData` and `uiState` (defined in `src/app.js`)
 - Direct DOM manipulation via `document.getElementById()`
 - Imperative procedural style throughout
-- Testable modules (`csv-parser.js`, `floor-utils.js`, `component-dimensions.js`, `placement-logic.js`, `placement-geometry.js`) export via `if (typeof module !== 'undefined') { module.exports = {...}; }` so they load in both browsers (via `<script>`) and Jest (via `require()`)
+- Testable modules (`csv-parser.js`, `floor-utils.js`, `component-dimensions.js`, `placement-logic.js`, `placement-geometry.js`, `hull-access.js`) export via `if (typeof module !== 'undefined') { module.exports = {...}; }` so they load in both browsers (via `<script>`) and Jest (via `require()`)
 - Undo/redo history entries carry `type: 'place'`, `'delete'`, or `'fill'` so the handler knows whether to re-enter placement mode or simply restore/remove placements; `entry`/`entries` hold the placement objects themselves so counts and shapes survive undo/redo
 - Placement entries are `{floor, x, y, length, width}` plus optional `count` (items held, default 1) and `rects` (odd-shaped region; x/y/length/width is then its bounding box). Always go through `getPlacementRects()` / `getPlacedCount()` rather than reading `length`/`width` or `floors.length` directly
 - Region (`rects`) placements can be selected and deleted but not moved, rotated, or resized
 - Armor boundary: `shipData.armorThickness` meters on all sides of each floor canvas; components must stay within the inner usable area
+- Hull rule: components where `requiresHullAccess(component)` is true (weapons, defenses, vehicles, launch bays/hangars) must touch the inner armor face on at least one side. Every path that sets a position (click placement, drag preview, move, rotate, resize, fill) must keep `touchesHull()` true; use `snapToHullEdge()` and `findValidPosition(..., requireHull)`. Their bulk modes are single / block / fill-exposed instead of fill-floor / fill-region

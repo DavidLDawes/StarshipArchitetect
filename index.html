@@ -152,20 +152,24 @@
                                 <input type="number" id="block-count" class="block-count-input" min="1" value="1" aria-label="Items in block">
                                 items as one rectangle</span>
                         </label>
-                        <label class="allocation-mode">
+                        <label class="allocation-mode" data-scope="interior">
                             <input type="radio" name="allocation-mode" value="fill-floor">
                             <span>Fill the rest of the selected floor</span>
                         </label>
-                        <label class="allocation-mode">
+                        <label class="allocation-mode" data-scope="interior">
                             <input type="radio" name="allocation-mode" value="fill-region">
                             <span>Fill a free region (pick it on the map)</span>
+                        </label>
+                        <label class="allocation-mode" data-scope="hull">
+                            <input type="radio" name="allocation-mode" value="fill-exposed">
+                            <span>Fill the rest of the exposed areas for the selected floor</span>
                         </label>
                     </div>
                     <div id="allocation-preview" class="allocation-preview" aria-live="polite"></div>
                 </div>
 
                 <div id="dimensions-row" class="modal-row">
-                    <label for="component-dimensions">Dimensions:</label>
+                    <label for="component-dimensions" id="dimensions-label">Dimensions:</label>
                     <select id="component-dimensions" class="dimension-select">
                         <!-- Options populated dynamically -->
                     </select>
@@ -202,6 +206,7 @@
     <script src="src/csv-parser.js"></script>
     <script src="src/floor-utils.js"></script>
     <script src="src/placement-geometry.js"></script>
+    <script src="src/hull-access.js"></script>
     <script src="src/canvas-renderer.js"></script>
     <script src="src/component-dimensions.js"></script>
     <script src="src/placement-logic.js"></script>

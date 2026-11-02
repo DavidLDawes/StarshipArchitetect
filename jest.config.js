@@ -9,6 +9,7 @@ module.exports = {
     'src/component-dimensions.js',
     'src/placement-logic.js',
     'src/placement-geometry.js',
+    'src/hull-access.js',
   ],
   coverageThreshold: {
     global: { lines: 70, functions: 70, branches: 55 }

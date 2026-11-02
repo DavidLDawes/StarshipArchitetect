@@ -282,6 +282,18 @@ function updateResize(mouseX, mouseY, canvas) {
 }
 
 /**
+ * Whether the resized rectangle still satisfies the hull rule: weapons,
+ * vehicles, and launch bays must keep touching the outer hull
+ * @returns {boolean}
+ */
+function resizeKeepsHullAccess(x = resizeState.currentX, y = resizeState.currentY) {
+    if (!requiresHullAccess(shipData.components[resizeState.componentIndex])) return true;
+    const { floorLength, floorWidth } = getCurrentFloorDimensions();
+    return touchesHull(x, y, resizeState.currentLength, resizeState.currentWidth,
+        floorLength, floorWidth, shipData.armorThickness || 0);
+}
+
+/**
  * Commit resize operation
  */
 function commitResize() {
@@ -300,7 +312,7 @@ function commitResize() {
         resizeState.componentIndex
     );
 
-    if (hasOverlap) {
+    if (hasOverlap || !resizeKeepsHullAccess()) {
         // Show error feedback
         const canvas = document.getElementById(`floor-canvas-${resizeState.floorIndex}`);
         if (canvas) {
@@ -321,6 +333,16 @@ function commitResize() {
         pos.y = Math.round(resizeState.currentY * 10) / 10;
         pos.length = Math.round(resizeState.currentLength * 10) / 10;
         pos.width = Math.round(resizeState.currentWidth * 10) / 10;
+
+        // Rounding can nudge a hull component up to 5 cm off the hull; put it back
+        if (requiresHullAccess(shipData.components[resizeState.componentIndex])) {
+            const armor = shipData.armorThickness || 0;
+            if (!touchesHull(pos.x, pos.y, pos.length, pos.width, floorLength, floorWidth, armor)) {
+                const snapped = snapToHullEdge(pos.x, pos.y, pos.length, pos.width, floorLength, floorWidth, armor);
+                pos.x = snapped.x;
+                pos.y = snapped.y;
+            }
+        }
 
         const newArea = pos.length * pos.width;
         console.log(`Resize committed: ${resizeState.originalLength}×${resizeState.originalWidth} -> ${pos.length}×${pos.width} (area: ${resizeState.componentArea.toFixed(2)}m² -> ${newArea.toFixed(2)}m²)`);
@@ -437,7 +459,7 @@ function drawResizePreview(canvas, floorIndex, floorLength, floorWidth) {
         resizeState.currentLength,
         resizeState.currentWidth,
         resizeState.componentIndex
-    );
+    ) && resizeKeepsHullAccess();
 
     const px = resizeState.currentX * pixelsPerMeter;
     const py = resizeState.currentY * pixelsPerMeter;

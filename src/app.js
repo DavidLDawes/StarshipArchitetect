@@ -289,6 +289,7 @@ function renderComponents() {
             <div class="component-stats">
                 <span>📦 ${component.tons} tons${totalQuantity > 1 ? ` (${component.tonsPerItem} each)` : ''}</span>
                 <span>💰 ${component.cost.toLocaleString()} MCr</span>
+                ${requiresHullAccess(component) ? '<span class="hull-badge" title="Needs access to space: must touch the outer hull">🛰️ Hull</span>' : ''}
             </div>
             ${placementInfo}
         `;
