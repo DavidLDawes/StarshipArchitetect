@@ -11,6 +11,8 @@ module.exports = {
     'src/placement-geometry.js',
     'src/hull-access.js',
     'src/rec-health.js',
+    'src/layout-io.js',
+    'src/layout-export.js',
   ],
   coverageThreshold: {
     global: { lines: 70, functions: 70, branches: 55 }

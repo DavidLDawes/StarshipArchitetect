@@ -105,6 +105,7 @@ function updateFloorConfig() {
     const { floorArea, floorWidth } = getCurrentFloorDimensions();
 
     elements.floorCount.textContent = shipData.numFloors;
+    elements.floorSlider.value = shipData.numFloors;
     elements.floorLength.value = shipData.floorLength;
     elements.ceilingHeight.value = shipData.ceilingHeight;
     elements.sqmPerFloor.textContent = Math.round(floorArea).toLocaleString();
@@ -119,6 +120,17 @@ function updateFloorConfig() {
  */
 function updateDimensionDropdown(floorArea) {
     const options = generateDimensionOptions(floorArea);
+
+    // Keep the current length even when it isn't one of the suggestions (typed
+    // in, the default, or restored from a layout): show it as a custom option
+    // rather than silently snapping, which would move the floor edges under
+    // placed components and leave the armor thickness calculated for another length
+    const current = shipData.floorLength;
+    if (current > 0 && !options.some(opt => Math.abs(opt.length - current) < 0.05)) {
+        const width = floorArea / current;
+        options.push({ length: current, width, label: `${Number(current.toFixed(1))} × ${width.toFixed(1)} m (custom)` });
+        options.sort((a, b) => a.length - b.length);
+    }
 
     // Clear existing options
     elements.floorDimensions.innerHTML = '';
@@ -141,15 +153,9 @@ function updateDimensionDropdown(floorArea) {
         }
     });
 
-    // Select the closest matching option
+    // Select the option matching the current length (never change the length here)
     if (options.length > 0) {
         elements.floorDimensions.selectedIndex = closestIndex;
-        if (shipData.floorLength !== options[closestIndex].length) {
-            shipData.floorLength = options[closestIndex].length;
-            elements.floorLength.value = shipData.floorLength;
-            const width = calculateFloorWidth(floorArea, shipData.floorLength);
-            elements.floorWidth.textContent = width.toFixed(1);
-        }
     }
 }
 
@@ -643,6 +649,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     setupComponentModalEvents();
     setupCombineRecHealthEvents();
+    setupLayoutEvents();
     initializeFloorSelector();
     console.log('🚀 Starship Architect initialized');
 });
