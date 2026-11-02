@@ -115,6 +115,14 @@
         <section id="components-section" class="card hidden">
             <h2>🔧 Ship Components</h2>
             <p class="section-hint">Click a component to set its dimensions and place it on the floor plan.</p>
+            <div id="combine-rec-health-row" class="combine-option hidden">
+                <label class="combine-label">
+                    <input type="checkbox" id="combine-rec-health">
+                    <span>Combine rec/health with staterooms</span>
+                </label>
+                <div id="combine-rec-health-hint" class="combine-hint"></div>
+            </div>
+            <div id="accommodations-summary" class="accommodations-summary hidden"></div>
             <div id="components-list" class="components-list">
                 <!-- Components from CSV will be listed here -->
             </div>
@@ -207,6 +215,7 @@
     <script src="src/floor-utils.js"></script>
     <script src="src/placement-geometry.js"></script>
     <script src="src/hull-access.js"></script>
+    <script src="src/rec-health.js"></script>
     <script src="src/canvas-renderer.js"></script>
     <script src="src/component-dimensions.js"></script>
     <script src="src/placement-logic.js"></script>
@@ -218,6 +227,7 @@
     <script src="src/component-modal.js"></script>
     <script src="src/bulk-allocation.js"></script>
     <script src="src/floor-selector.js"></script>
+    <script src="src/accommodations-panel.js"></script>
     <script src="src/app.js"></script>
 </body>
 

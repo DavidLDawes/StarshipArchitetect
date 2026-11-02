@@ -8,14 +8,24 @@
 // ========================================
 
 /**
+ * Tons taken up by one item, including any overhead it carries
+ * (staterooms carry a share of rec/health tonnage when the two are combined;
+ * see rec-health.js)
+ * @param {object} component - Component with tons/tonsPerItem and optional overheadPerItem
+ * @returns {number} Tons per item
+ */
+function getEffectiveTonsPerItem(component) {
+    // Use per-item tonnage if available (for multi-quantity items)
+    return (component.tonsPerItem || component.tons) + (component.overheadPerItem || 0);
+}
+
+/**
  * Calculate component area in square meters (for a single item)
  * @param {object} component - Component object with tons/tonsPerItem property
  * @returns {number} Area in square meters for one item
  */
 function calculateComponentArea(component) {
-    // Use per-item tonnage if available (for multi-quantity items)
-    const tons = component.tonsPerItem || component.tons;
-    return (tons * SQM_PER_TON) / shipData.ceilingHeight;
+    return (getEffectiveTonsPerItem(component) * SQM_PER_TON) / shipData.ceilingHeight;
 }
 
 // ========================================
@@ -188,5 +198,5 @@ function generateComponentDimensionOptions(component, floorArea, floorLength, fl
 
 // CommonJS export for Jest (no-op in browsers where `module` is undefined)
 if (typeof module !== 'undefined') {
-    module.exports = { calculateComponentArea, generateComponentDimensionOptions };
+    module.exports = { getEffectiveTonsPerItem, calculateComponentArea, generateComponentDimensionOptions };
 }

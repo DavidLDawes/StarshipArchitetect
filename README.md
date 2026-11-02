@@ -29,6 +29,29 @@ The component list shows how many are placed per floor (e.g. `Placed 80 of 140 (
 so the remainder can be accounted for on other floors. Region allocations can be
 selected and deleted, and all of these actions support undo/redo (Ctrl+Z / Ctrl+Shift+Z).
 
+### Combining Rec/Health with Staterooms
+
+Ships with large crews or many passengers carry lots of small recreation and
+health fittings (spas, gyms, gardens, kitchens, autodocs, first aid stations...).
+Instead of placing each one, tick **Combine rec/health with staterooms** at the
+top of the component list:
+
+- The rec/health tonnage is shared over every stateroom (e.g. 32 t over 160
+  staterooms adds 0.2 t to each), so staterooms get a little bigger. Fill floors
+  with them using any of the allocation options above, and the rec/health space
+  is reserved along with them.
+- The individual rec/health items are spread over the floors in proportion to
+  the staterooms on each floor. Copies of an item (two gyms, three spas) go to
+  different floors where possible. Items wait in a "waiting for more staterooms"
+  list until enough staterooms are placed to cover them.
+- The **Staterooms + rec/health by floor** table tracks each floor's stateroom
+  count, which rec/health items it holds, and the tonnage of both. Each
+  rec/health item in the component list shows where it went (e.g. `F1: 2, F3: 1`).
+
+Low berths and emergency low berths don't carry the overhead. The option can
+only be switched while no staterooms or rec/health items are on the floor plan,
+because placed staterooms were sized with (or without) the extra space.
+
 ### Weapons, Vehicles, and Launch Bays Go on the Hull
 
 Weapons (turrets, barbettes, bays, hard points, and defensive systems such as
