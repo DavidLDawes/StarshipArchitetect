@@ -30,6 +30,9 @@ src/                # JavaScript source modules
   hull-access.js    # Which components must touch the outer hull; hull snapping; exposed-hull fill planning
   rec-health.js     # Combine rec/health with staterooms: classification, overhead, per-floor distribution
   accommodations-panel.js # Combine toggle, staterooms + rec/health per-floor table, combined list entries
+  layout-io.js      # Layout file format: serialize, parse/validate/migrate, tolerant restore by component key
+  layout-export.js  # SVG deck-plan export (true scale, layer per floor)
+  layout-ui.js      # Save/open layout buttons, design-choice and report modal, autosave + restore banner, SVG download
   canvas-renderer.js
   component-dimensions.js
   placement-logic.js
@@ -43,8 +46,8 @@ src/                # JavaScript source modules
   floor-selector.js
 data/               # Sample CSV ship designs
 tests/              # Manual test HTML pages and JS test scripts
-  unit/             # Jest unit tests (csv-parser, floor-utils, component-dimensions, placement-logic, placement-geometry, hull-access, rec-health)
-  jest-setup.js     # Global stubs for shipData / uiState / constants; exposes placement-geometry, hull-access, and rec-health helpers as globals
+  unit/             # Jest unit tests (csv-parser, floor-utils, component-dimensions, placement-logic, placement-geometry, hull-access, rec-health, layout-io)
+  jest-setup.js     # Global stubs for shipData / uiState / constants; exposes placement-geometry, hull-access, rec-health, and layout-io helpers as globals
 docs/               # Implementation notes and design docs
 .github/workflows/  # CI: lint + test/coverage jobs on every push/PR
 jest.config.js      # Jest config (node env, coverage thresholds 70/70/55)
@@ -57,10 +60,11 @@ jest.config.js      # Jest config (node env, coverage thresholds 70/70/55)
 - Global state in `shipData` and `uiState` (defined in `src/app.js`)
 - Direct DOM manipulation via `document.getElementById()`
 - Imperative procedural style throughout
-- Testable modules (`csv-parser.js`, `floor-utils.js`, `component-dimensions.js`, `placement-logic.js`, `placement-geometry.js`, `hull-access.js`, `rec-health.js`) export via `if (typeof module !== 'undefined') { module.exports = {...}; }` so they load in both browsers (via `<script>`) and Jest (via `require()`)
+- Testable modules (`csv-parser.js`, `floor-utils.js`, `component-dimensions.js`, `placement-logic.js`, `placement-geometry.js`, `hull-access.js`, `rec-health.js`, `layout-io.js`, `layout-export.js`) export via `if (typeof module !== 'undefined') { module.exports = {...}; }` so they load in both browsers (via `<script>`) and Jest (via `require()`)
 - Undo/redo history entries carry `type: 'place'`, `'delete'`, or `'fill'` so the handler knows whether to re-enter placement mode or simply restore/remove placements; `entry`/`entries` hold the placement objects themselves so counts and shapes survive undo/redo
 - Placement entries are `{floor, x, y, length, width}` plus optional `count` (items held, default 1) and `rects` (odd-shaped region; x/y/length/width is then its bounding box). Always go through `getPlacementRects()` / `getPlacedCount()` rather than reading `length`/`width` or `floors.length` directly
 - Region (`rects`) placements can be selected and deleted but not moved, rotated, or resized
 - Armor boundary: `shipData.armorThickness` meters on all sides of each floor canvas; components must stay within the inner usable area
 - Hull rule: components where `requiresHullAccess(component)` is true (weapons, defenses, vehicles, launch bays/hangars) must touch the inner armor face on at least one side. Every path that sets a position (click placement, drag preview, move, rotate, resize, fill) must keep `touchesHull()` true; use `snapToHullEdge()` and `findValidPosition(..., requireHull)`. Their bulk modes are single / block / fill-exposed instead of fill-floor / fill-region
 - Rec/health combination: when `shipData.combineRecHealth` is on, stateroom components carry `overheadPerItem` (tons) and rec/health components carry `combinedWithStaterooms`. Use `getEffectiveTonsPerItem()` / `calculateComponentArea()` for item size, never `tonsPerItem` alone. Rec/health items are never placed; their per-floor assignment is derived from stateroom placements by `summarizeAccommodations()` each time `renderComponents()` runs. The toggle is locked while staterooms or rec/health items are placed
+- Layouts: `serializeLayout()` / `restorePlacements()` in layout-io.js define the saved format (`format: 'starship-architect-layout'`, `version`). Placements are stored by component key (`category|item|n`), never by index. Any new placement field or ship option must be added to both, and a format change needs a `version` bump plus a step in `migrateLayout()`. Floor length, count, and ceiling height are applied directly when loading (their UI handlers clear placements); `updateDimensionDropdown()` must never change `shipData.floorLength`

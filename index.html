@@ -27,7 +27,17 @@
                     <span class="icon">📄</span>
                     <span>Choose CSV File</span>
                 </label>
+                <input type="file" id="layout-input" accept=".json,application/json" />
+                <label for="layout-input" class="file-upload-btn file-upload-btn-secondary">
+                    <span class="icon">📂</span>
+                    <span>Open Saved Layout</span>
+                </label>
                 <span id="file-name" class="file-name">No file selected</span>
+            </div>
+            <div id="autosave-banner" class="autosave-banner hidden" role="status">
+                <span id="autosave-text"></span>
+                <button id="autosave-restore" class="btn btn-primary btn-small">Restore</button>
+                <button id="autosave-dismiss" class="btn btn-secondary btn-small">Dismiss</button>
             </div>
         </section>
 
@@ -35,9 +45,17 @@
         <section id="stats-section" class="card hidden">
             <div class="section-header-row">
                 <h2>📊 Ship Statistics</h2>
-                <button id="share-button" class="btn-share" title="Copy shareable URL to clipboard">
-                    📋 Share Design
-                </button>
+                <div class="header-actions">
+                    <button id="save-layout-button" class="btn-share" title="Download the floors and everything placed on them as a layout file">
+                        💾 Save Layout
+                    </button>
+                    <button id="export-svg-button" class="btn-share" title="Download the deck plan as an SVG drawing (opens in Inkscape, Illustrator, Figma, diagrams.net...)">
+                        🖼️ Export SVG
+                    </button>
+                    <button id="share-button" class="btn-share" title="Copy shareable URL to clipboard">
+                        📋 Share Design
+                    </button>
+                </div>
             </div>
             <h3 id="ship-name" class="ship-name" style="margin: 1rem 0; font-size: 1.5rem; color: #4CAF50;"></h3>
             <div class="stats-grid">
@@ -129,6 +147,18 @@
         </section>
     </div>
 
+    <!-- Layout Modal (open-layout choices and reports) -->
+    <div id="layout-modal" class="modal-overlay hidden">
+        <div class="modal-content layout-modal-content">
+            <div class="modal-header">
+                <h3 id="layout-modal-title">Layout</h3>
+                <button id="layout-modal-close" class="modal-close-btn">&times;</button>
+            </div>
+            <div id="layout-modal-body" class="modal-body layout-modal-body"></div>
+            <div id="layout-modal-actions" class="modal-footer"></div>
+        </div>
+    </div>
+
     <!-- Component Dimension Modal -->
     <div id="component-modal" class="modal-overlay hidden">
         <div class="modal-content">
@@ -216,6 +246,8 @@
     <script src="src/placement-geometry.js"></script>
     <script src="src/hull-access.js"></script>
     <script src="src/rec-health.js"></script>
+    <script src="src/layout-io.js"></script>
+    <script src="src/layout-export.js"></script>
     <script src="src/canvas-renderer.js"></script>
     <script src="src/component-dimensions.js"></script>
     <script src="src/placement-logic.js"></script>
@@ -228,6 +260,7 @@
     <script src="src/bulk-allocation.js"></script>
     <script src="src/floor-selector.js"></script>
     <script src="src/accommodations-panel.js"></script>
+    <script src="src/layout-ui.js"></script>
     <script src="src/app.js"></script>
 </body>
 

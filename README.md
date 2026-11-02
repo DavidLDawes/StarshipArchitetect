@@ -72,6 +72,43 @@ Hull components that come in quantity offer three allocation options:
   lined with blocks of items, top and bottom sides first, then left and right.
   Anything that doesn't fit is left for other floors.
 
+### Saving and Loading Layouts
+
+- **💾 Save Layout** (Ship Statistics) downloads a `*.starship.json` file with
+  the ship design (the original CSV is embedded, so the file stands alone), the
+  number and size of floors, the ceiling height, the rec/health option, and
+  everything placed on every floor, including block counts and odd-shaped regions.
+- **📂 Open Saved Layout** (Import Ship Design) restores it. If a different
+  design is loaded at the time, you choose:
+  - **Apply to current design** (tolerant): components that still match keep
+    their saved places. Matching is by category and item, then by item name
+    ignoring quantity, so `Staterooms (x140)` → `Staterooms (x120)` still matches.
+    Anything that can't be restored is listed: missing components, extra items
+    beyond the new quantity (blocks are trimmed), floors that no longer exist,
+    pieces that no longer fit inside the armor, hull items no longer on the hull,
+    and overlaps.
+  - **Load saved design**: replaces the current design with the one in the file.
+- **Autosave**: the current layout is saved in the browser every few seconds
+  whenever something is placed. If you reopen the page, or placements get
+  cleared (changing floors or loading another CSV), a banner offers to restore
+  the last layout.
+
+### Exporting to Other Apps
+
+**🖼️ Export SVG** downloads the deck plan as an SVG drawing. It opens as
+editable vector shapes in Inkscape, Illustrator, Figma, Affinity, and
+diagrams.net, and in any browser.
+
+- True to scale: coordinates are meters, and the page size is set for printing
+  at 1:100.
+- Each floor is a separate group (an Inkscape layer), the armor is drawn as a
+  band, and each placement is a labeled rectangle in the same colors as the
+  screen. Shapes carry `data-component`, `data-category`, and `data-count`
+  attributes and a tooltip with tonnage and area.
+
+Google Docs and Drawings only accept pictures. For an editable drawing in
+Google Drive, open the SVG in diagrams.net.
+
 ### URL Loading & Sharing
 
 You can load ship designs directly via URL parameters, enabling deep linking, bookmarking, and sharing:

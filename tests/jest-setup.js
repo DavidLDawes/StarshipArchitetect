@@ -28,3 +28,4 @@ global.uiState = {
 Object.assign(global, require('../src/placement-geometry'));
 Object.assign(global, require('../src/hull-access'));
 Object.assign(global, require('../src/rec-health'));
+Object.assign(global, require('../src/layout-io'));
