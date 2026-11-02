@@ -22,3 +22,7 @@ global.uiState = {
   redoHistory: [],
   selectedPlacement: null
 };
+
+// In the browser every src/ module shares the global scope; mirror that for
+// helpers other modules call (e.g. placement-logic uses getPlacementRects).
+Object.assign(global, require('../src/placement-geometry'));

@@ -31,7 +31,8 @@ let uiState = {
     placementData: null,
     placementHistory: [], // Stack of placements for undo
     redoHistory: [],      // Stack of undone placements for redo
-    selectedPlacement: null // { componentIndex, floorIndex, placementIndex } - currently selected for moving
+    selectedPlacement: null, // { componentIndex, floorIndex, placementIndex } - currently selected for moving
+    regionFill: null         // { componentIndex, ... } while picking free regions to fill (bulk-allocation.js)
 };
 
 // ========================================
@@ -157,6 +158,9 @@ function updateDimensionDropdown(floorArea) {
 function renderFloors() {
     const { floorWidth, floorLength } = getCurrentFloorDimensions();
 
+    // Canvases are rebuilt and placements may have been cleared
+    cancelRegionFill();
+
     elements.floorList.innerHTML = '';
 
     for (let i = 1; i <= shipData.numFloors; i++) {
@@ -228,9 +232,9 @@ function renderComponents() {
     elements.componentsList.innerHTML = '';
 
     shipData.components.forEach((component, index) => {
-        // Count how many of this component are placed
+        // Count how many of this component are placed (blocks and regions hold several)
         const placement = shipData.componentPlacements[index];
-        const placedCount = placement && placement.floors ? placement.floors.length : 0;
+        const placedCount = getPlacedCount(placement);
         const totalQuantity = component.quantity || 1;
         const remainingCount = totalQuantity - placedCount;
         const isFullyPlaced = placedCount >= totalQuantity;
@@ -263,7 +267,14 @@ function renderComponents() {
         let placementInfo = '';
         if (placedCount > 0) {
             if (totalQuantity > 1) {
-                placementInfo = `<div class="component-placement-info">📍 Placed ${placedCount} of ${totalQuantity}</div>`;
+                // Per-floor breakdown helps account for items split across floors
+                const byFloor = getPlacedCountByFloor(placement);
+                const breakdown = Object.keys(byFloor)
+                    .sort((a, b) => a - b)
+                    .map(f => `F${f}: ${byFloor[f]}`)
+                    .join(', ');
+                placementInfo = `<div class="component-placement-info">📍 Placed ${placedCount} of ${totalQuantity}` +
+                    `${breakdown ? ` <span class="component-floor-breakdown">(${breakdown})</span>` : ''}</div>`;
             } else {
                 const floors = placement.floors.map(f => f.floor).join(', ');
                 placementInfo = `<div class="component-placement-info">📍 Placed on Floor${placement.floors.length > 1 ? 's' : ''} ${floors}</div>`;

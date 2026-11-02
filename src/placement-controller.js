@@ -23,6 +23,12 @@ function handleCanvasPlacement(event, floorIndex) {
         return;
     }
 
+    // Picking a free region to fill with a multi-quantity component
+    if (uiState.regionFill) {
+        handleRegionFillClick(event, floorIndex);
+        return;
+    }
+
     // If we're moving a selected component
     if (uiState.selectedPlacement) {
         handleComponentMove(event, floorIndex);
@@ -156,15 +162,15 @@ function placeMultiFloorComponent(data, x, y, compLength, compWidth, floorLength
     }
 
     for (const f of data.floors) {
-        shipData.componentPlacements[data.componentIndex].floors.push({
-            floor: f, x: x, y: y, length: compLength, width: compWidth
-        });
+        const entry = { floor: f, x: x, y: y, length: compLength, width: compWidth };
+        shipData.componentPlacements[data.componentIndex].floors.push(entry);
 
         // Record in history for undo
         uiState.placementHistory.push({
             type: 'place',
             componentIndex: data.componentIndex, floor: f,
-            x: x, y: y, length: compLength, width: compWidth
+            x: x, y: y, length: compLength, width: compWidth,
+            entry: entry
         });
 
         // Redraw each floor
@@ -184,7 +190,9 @@ function placeMultiFloorComponent(data, x, y, compLength, compWidth, floorLength
 // ========================================
 
 /**
- * Place a component on a single floor (handles multi-quantity components)
+ * Place a component on a single floor (handles multi-quantity components).
+ * When data.count > 1 the rectangle is a block holding that many items and
+ * placement mode ends after it is placed.
  */
 function placeSingleFloorComponent(data, floorIndex, x, y, compLength, compWidth, floorLength, floorWidth, canvas) {
     // Store placement with individual dimensions
@@ -192,15 +200,18 @@ function placeSingleFloorComponent(data, floorIndex, x, y, compLength, compWidth
         shipData.componentPlacements[data.componentIndex] = { floors: [] };
     }
 
-    shipData.componentPlacements[data.componentIndex].floors.push({
-        floor: floorIndex, x: x, y: y, length: compLength, width: compWidth
-    });
+    const count = data.count > 1 ? data.count : 1;
+    const entry = { floor: floorIndex, x: x, y: y, length: compLength, width: compWidth };
+    if (count > 1) entry.count = count;
+    shipData.componentPlacements[data.componentIndex].floors.push(entry);
 
     // Record in history for undo
     uiState.placementHistory.push({
         type: 'place',
         componentIndex: data.componentIndex, floor: floorIndex,
-        x: x, y: y, length: compLength, width: compWidth
+        x: x, y: y, length: compLength, width: compWidth,
+        count: count,
+        entry: entry
     });
     uiState.redoHistory = [];
 
@@ -208,9 +219,9 @@ function placeSingleFloorComponent(data, floorIndex, x, y, compLength, compWidth
     const component = shipData.components[data.componentIndex];
     const totalQuantity = component.quantity || 1;
     const placement = shipData.componentPlacements[data.componentIndex];
-    const placedCount = placement ? placement.floors.length : 0;
+    const placedCount = getPlacedCount(placement);
 
-    if (placedCount < totalQuantity) {
+    if (count === 1 && placedCount < totalQuantity) {
         // More items to place - continue placement mode
         renderComponents();
         data.floors = [];

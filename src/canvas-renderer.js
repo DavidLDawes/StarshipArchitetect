@@ -124,64 +124,69 @@ function drawFloorWithComponents(canvas, floorIndex, length, width, placements =
 
         if (!placement.floors) continue;
 
-        // Count placements to get individual numbering
-        let placementNum = 0;
+        // Running item number so single items are labelled 1, 2, 3... across blocks
+        let itemNum = 0;
         for (const pos of placement.floors) {
-            placementNum++;
-            if (pos.floor === floorIndex) {
+            const count = getPlacementCount(pos);
+            const firstItemNum = itemNum + 1;
+            itemNum += count;
+            if (pos.floor !== floorIndex) continue;
+
+            if (pos.rects && pos.rects.length > 0) {
+                drawPlacedShape(ctx, pos.rects, component, pixelsPerMeter, compIdx, count);
+            } else {
                 // Use per-placement dimensions (fallback to component-level for backwards compatibility)
                 const pLength = pos.length || placement.length;
                 const pWidth = pos.width || placement.width;
                 drawPlacedComponent(ctx, pos.x, pos.y, pLength, pWidth,
-                    component, pixelsPerMeter, compIdx, placementNum);
+                    component, pixelsPerMeter, compIdx, firstItemNum, count);
             }
         }
     }
 }
 
 /**
- * Draw a placed component on the canvas
- * @param {number} placementNum - The individual placement number (1, 2, 3, etc.)
+ * Fill/stroke colors for a component (stable per component index)
  */
-function drawPlacedComponent(ctx, x, y, compLength, compWidth, component, pixelsPerMeter, compIdx, placementNum = 1) {
-    const px = x * pixelsPerMeter;
-    const py = y * pixelsPerMeter;
-    const pw = compLength * pixelsPerMeter;
-    const ph = compWidth * pixelsPerMeter;
-
-    // Generate a color based on component index - fully opaque
+function getComponentColors(compIdx) {
     const hue = (compIdx * 47) % 360;
-    const fillColor = `hsl(${hue}, 50%, 35%)`;
-    const strokeColor = `hsl(${hue}, 60%, 55%)`;
+    return {
+        fill: `hsl(${hue}, 50%, 35%)`,
+        stroke: `hsl(${hue}, 60%, 55%)`
+    };
+}
 
-    // Fill - solid/opaque to cover grid
-    ctx.fillStyle = fillColor;
-    ctx.fillRect(px, py, pw, ph);
+/**
+ * Build the label shown on a placed component
+ * @param {object} component - Component data
+ * @param {number} placementNum - Item number of a single item (1, 2, 3...)
+ * @param {number} count - Items held by this placement
+ * @returns {string}
+ */
+function getPlacementLabel(component, placementNum, count) {
+    // Get component name - use itemName for multi-quantity, remove any "xN" suffix
+    const baseName = (component.itemName || component.item).replace(/\s*x\d+$/, '');
+    if (count > 1) {
+        return `${baseName} ×${count}`;
+    }
+    if (component.quantity && component.quantity > 1) {
+        return `${baseName} ${placementNum}`;
+    }
+    return baseName;
+}
 
-    // Border
-    ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(px, py, pw, ph);
-
-    // Label - with text shadow for better readability
+/**
+ * Draw a label centered at (cx, cy), truncated to fit maxWidthPx
+ */
+function drawFittedLabel(ctx, text, cx, cy, maxWidthPx) {
     ctx.fillStyle = 'white';
     ctx.font = 'bold 12px Inter, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // Get component name - use itemName for multi-quantity, add individual number
-    let baseName = component.itemName || component.item;
-    // Remove any "xN" suffix if present
-    baseName = baseName.replace(/\s*x\d+$/, '');
-
-    // Add individual number for multi-quantity components
-    let name = baseName;
-    if (component.quantity && component.quantity > 1) {
-        name = `${baseName} ${placementNum}`;
-    }
-
     // Calculate max chars that fit in the width
-    const maxChars = Math.floor(pw / 7);
+    let name = text;
+    const maxChars = Math.floor(maxWidthPx / 7);
     if (name.length > maxChars && maxChars > 3) {
         name = name.substring(0, maxChars - 2) + '..';
     } else if (maxChars <= 3) {
@@ -191,8 +196,76 @@ function drawPlacedComponent(ctx, x, y, compLength, compWidth, component, pixels
     // Draw text with shadow for visibility
     ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
     ctx.shadowBlur = 3;
-    ctx.fillText(name, px + pw / 2, py + ph / 2);
+    ctx.fillText(name, cx, cy);
     ctx.shadowBlur = 0;
+}
+
+/**
+ * Draw an odd-shaped placement (a union of rectangles) on the canvas
+ * The outline is drawn first and then covered by the fills, so only the outer
+ * boundary remains visible and internal seams between rectangles disappear.
+ */
+function drawPlacedShape(ctx, rects, component, pixelsPerMeter, compIdx, count) {
+    const colors = getComponentColors(compIdx);
+    const toPx = r => [r.x * pixelsPerMeter, r.y * pixelsPerMeter, r.length * pixelsPerMeter, r.width * pixelsPerMeter];
+
+    ctx.strokeStyle = colors.stroke;
+    ctx.lineWidth = 4;
+    for (const r of rects) ctx.strokeRect(...toPx(r));
+
+    ctx.fillStyle = colors.fill;
+    for (const r of rects) ctx.fillRect(...toPx(r));
+
+    // Diagonal hatching marks this as a region allocation rather than a single room
+    ctx.save();
+    ctx.beginPath();
+    for (const r of rects) ctx.rect(...toPx(r));
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+    ctx.lineWidth = 1;
+    const box = getBoundingBox(rects);
+    const [bx, by, bw, bh] = toPx(box);
+    for (let d = -bh; d < bw; d += 10) {
+        ctx.beginPath();
+        ctx.moveTo(bx + d, by);
+        ctx.lineTo(bx + d + bh, by + bh);
+        ctx.stroke();
+    }
+    ctx.restore();
+
+    // Label goes in the widest rectangle tall enough for a line of text
+    // (labels are horizontal, so a long thin vertical strip is a poor spot)
+    const label = getPlacementLabel(component, 1, count);
+    const tallEnough = rects.filter(r => r.width * pixelsPerMeter >= 16);
+    const candidates = tallEnough.length > 0 ? tallEnough : rects;
+    const best = candidates.reduce((a, b) => (b.length > a.length ? b : a));
+    const [lx, ly, lw, lh] = toPx(best);
+    drawFittedLabel(ctx, label, lx + lw / 2, ly + lh / 2, lw);
+}
+
+/**
+ * Draw a placed component on the canvas
+ * @param {number} placementNum - The individual item number (1, 2, 3, etc.)
+ * @param {number} count - Number of items held by this rectangle
+ */
+function drawPlacedComponent(ctx, x, y, compLength, compWidth, component, pixelsPerMeter, compIdx, placementNum = 1, count = 1) {
+    const px = x * pixelsPerMeter;
+    const py = y * pixelsPerMeter;
+    const pw = compLength * pixelsPerMeter;
+    const ph = compWidth * pixelsPerMeter;
+
+    // Color based on component index - fully opaque to cover grid
+    const colors = getComponentColors(compIdx);
+
+    ctx.fillStyle = colors.fill;
+    ctx.fillRect(px, py, pw, ph);
+
+    // Border
+    ctx.strokeStyle = colors.stroke;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(px, py, pw, ph);
+
+    drawFittedLabel(ctx, getPlacementLabel(component, placementNum, count), px + pw / 2, py + ph / 2, pw);
 }
 
 /**

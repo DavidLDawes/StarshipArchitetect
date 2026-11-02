@@ -31,6 +31,13 @@ function isWithinUsableArea(x, y, length, width, floorLength, floorWidth, armorT
 // ========================================
 
 /**
+ * Overlap tolerance in meters. Region allocations share edges exactly with their
+ * neighbors, and x + length can drift by ~1e-15 in floating point; without a
+ * tolerance, touching shapes would be reported as overlapping.
+ */
+const OVERLAP_EPS = 1e-6;
+
+/**
  * Check if a placement overlaps with existing components
  * @param {number} excludeComponentIndex - Set to -1 to check all, or a specific index to exclude
  */
@@ -45,17 +52,15 @@ function checkOverlap(floorIndex, x, y, length, width, excludeComponentIndex = -
         for (const pos of placement.floors) {
             if (pos.floor !== floorIndex) continue;
 
-            // Use per-placement dimensions (fallback to component-level)
-            const pLength = pos.length || placement.length;
-            const pWidth = pos.width || placement.width;
+            // A placement may be a single rectangle or an odd-shaped set of rectangles
+            for (const r of getPlacementRects(pos, placement)) {
+                const overlap = !(x + length <= r.x + OVERLAP_EPS ||
+                    r.x + r.length <= x + OVERLAP_EPS ||
+                    y + width <= r.y + OVERLAP_EPS ||
+                    r.y + r.width <= y + OVERLAP_EPS);
 
-            // Check rectangle overlap
-            const overlap = !(x + length <= pos.x ||
-                pos.x + pLength <= x ||
-                y + width <= pos.y ||
-                pos.y + pWidth <= y);
-
-            if (overlap) return true;
+                if (overlap) return true;
+            }
         }
     }
     return false;
@@ -87,15 +92,7 @@ function findValidPosition(floorIndex, origX, origY, compLength, compWidth, floo
 
         for (const pos of placement.floors) {
             if (pos.floor === floorIndex) {
-                // Use per-placement dimensions
-                const pLength = pos.length || placement.length;
-                const pWidth = pos.width || placement.width;
-                overlappingComponents.push({
-                    x: pos.x,
-                    y: pos.y,
-                    length: pLength,
-                    width: pWidth
-                });
+                overlappingComponents.push(...getPlacementRects(pos, placement));
             }
         }
     }

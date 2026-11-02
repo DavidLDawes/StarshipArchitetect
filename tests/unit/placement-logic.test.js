@@ -304,3 +304,44 @@ describe('findValidPosition', () => {
     }
   });
 });
+
+// ============================================================
+// Region (odd-shaped) placements
+// ============================================================
+
+describe('checkOverlap with region placements', () => {
+  beforeEach(() => {
+    // L shape along the top and left of a 10x10 corner; bounding box is 0..10 x 0..10
+    global.shipData.componentPlacements = {
+      0: {
+        floors: [{
+          floor: 1, x: 0, y: 0, length: 10, width: 10, count: 9,
+          rects: [{ x: 0, y: 0, length: 10, width: 2 }, { x: 0, y: 2, length: 2, width: 8 }]
+        }]
+      }
+    };
+  });
+
+  test('space inside the bounding box but outside the shape is free', () => {
+    expect(checkOverlap(1, 3, 3, 5, 5)).toBe(false);
+  });
+
+  test('overlapping one of the shape rects is detected', () => {
+    expect(checkOverlap(1, 1, 5, 3, 3)).toBe(true);
+    expect(checkOverlap(1, 5, 1, 3, 3)).toBe(true);
+  });
+
+  test('touching edges with floating-point drift is not an overlap', () => {
+    // 0.1 + 0.2 = 0.30000000000000004
+    global.shipData.componentPlacements = {
+      0: { floors: [{ floor: 1, x: 0.1, y: 0, length: 0.2, width: 1 }] }
+    };
+    expect(checkOverlap(1, 0.3, 0, 1, 1)).toBe(false);
+  });
+
+  test('findValidPosition steps around a region shape', () => {
+    const pos = findValidPosition(1, 1, 1, 3, 3, 30, 20, -1);
+    expect(pos).not.toBeNull();
+    expect(checkOverlap(1, pos.x, pos.y, 3, 3)).toBe(false);
+  });
+});

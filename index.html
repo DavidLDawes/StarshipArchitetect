@@ -138,14 +138,40 @@
             </div>
 
             <div class="modal-body">
-                <div class="modal-row">
+                <!-- Allocation options for items that come in quantity (staterooms, turrets...) -->
+                <div id="allocation-section" class="allocation-section hidden">
+                    <div id="allocation-status" class="allocation-status"></div>
+                    <div class="allocation-modes" role="radiogroup" aria-label="How to allocate">
+                        <label class="allocation-mode">
+                            <input type="radio" name="allocation-mode" value="single" checked>
+                            <span>One at a time</span>
+                        </label>
+                        <label class="allocation-mode">
+                            <input type="radio" name="allocation-mode" value="block">
+                            <span>A block of
+                                <input type="number" id="block-count" class="block-count-input" min="1" value="1" aria-label="Items in block">
+                                items as one rectangle</span>
+                        </label>
+                        <label class="allocation-mode">
+                            <input type="radio" name="allocation-mode" value="fill-floor">
+                            <span>Fill the rest of the selected floor</span>
+                        </label>
+                        <label class="allocation-mode">
+                            <input type="radio" name="allocation-mode" value="fill-region">
+                            <span>Fill a free region (pick it on the map)</span>
+                        </label>
+                    </div>
+                    <div id="allocation-preview" class="allocation-preview" aria-live="polite"></div>
+                </div>
+
+                <div id="dimensions-row" class="modal-row">
                     <label for="component-dimensions">Dimensions:</label>
                     <select id="component-dimensions" class="dimension-select">
                         <!-- Options populated dynamically -->
                     </select>
                 </div>
 
-                <div class="modal-row">
+                <div id="floor-select-row" class="modal-row">
                     <label for="component-floor-select">Place on Floor:</label>
                     <select id="component-floor-select" class="dimension-select">
                         <!-- Options populated dynamically -->
@@ -175,6 +201,7 @@
     <!-- Scripts - order matters for dependencies -->
     <script src="src/csv-parser.js"></script>
     <script src="src/floor-utils.js"></script>
+    <script src="src/placement-geometry.js"></script>
     <script src="src/canvas-renderer.js"></script>
     <script src="src/component-dimensions.js"></script>
     <script src="src/placement-logic.js"></script>
@@ -184,6 +211,7 @@
     <script src="src/drag-preview.js"></script>
     <script src="src/placement-controller.js"></script>
     <script src="src/component-modal.js"></script>
+    <script src="src/bulk-allocation.js"></script>
     <script src="src/floor-selector.js"></script>
     <script src="src/app.js"></script>
 </body>

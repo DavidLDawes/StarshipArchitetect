@@ -118,13 +118,13 @@ function parseCSV(csvContent, filename = '') {
             totalTons = tons;
             totalCost = cost;
         } else if (category.toLowerCase() !== 'total' && category.toLowerCase() !== 'totals') {
-            // Parse quantity from item name (e.g., "Staterooms x10")
+            // Parse quantity from item name: "Staterooms x10" or "Staterooms (x140)"
             let quantity = 1;
             let itemName = item;
-            const quantityMatch = item.match(/^(.+?)\s*[xX×]\s*(\d+)$/);
+            const quantityMatch = item.match(/^(.+?)\s*(?:\(\s*[xX×]\s*(\d+)\s*\)|[xX×]\s*(\d+))$/);
             if (quantityMatch) {
                 itemName = quantityMatch[1].trim();
-                quantity = parseInt(quantityMatch[2]);
+                quantity = parseInt(quantityMatch[2] || quantityMatch[3], 10);
             }
 
             // Calculate per-item tonnage

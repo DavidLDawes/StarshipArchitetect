@@ -740,6 +740,87 @@ body {
     color: var(--color-text-primary);
 }
 
+.btn:disabled,
+.btn:disabled:hover {
+    opacity: 0.45;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+/* Allocation section (multi-quantity components) */
+.allocation-section {
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+}
+
+.allocation-status {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--color-accent-primary);
+    margin-bottom: var(--spacing-sm);
+}
+
+.allocation-modes {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs);
+}
+
+.allocation-mode {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xs) var(--spacing-sm);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-primary);
+    cursor: pointer;
+    transition: background var(--transition-fast);
+}
+
+.allocation-mode:hover {
+    background: var(--color-bg-input);
+}
+
+.allocation-mode input[type="radio"] {
+    accent-color: var(--color-accent-primary);
+}
+
+.block-count-input {
+    width: 4.5rem;
+    margin: 0 var(--spacing-xs);
+    padding: 2px var(--spacing-xs);
+    background: var(--color-bg-input);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-primary);
+    font-family: var(--font-mono);
+}
+
+.allocation-preview {
+    margin-top: var(--spacing-sm);
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--color-text-secondary);
+}
+
+.allocation-preview:empty {
+    display: none;
+}
+
+.allocation-preview.warning {
+    color: var(--color-warning);
+}
+
+.component-floor-breakdown {
+    color: var(--color-text-secondary);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+}
+
 /* Multi-floor section */
 .multi-floor-section {
     background: var(--color-bg-secondary);
@@ -865,6 +946,10 @@ body {
     cursor: crosshair;
     box-shadow: 0 0 20px var(--color-success);
     animation: placement-pulse 1.5s infinite;
+}
+
+.floor-canvas.region-fill-mode {
+    cursor: cell;
 }
 
 @keyframes placement-pulse {
