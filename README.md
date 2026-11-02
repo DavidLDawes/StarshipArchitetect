@@ -29,6 +29,26 @@ The component list shows how many are placed per floor (e.g. `Placed 80 of 140 (
 so the remainder can be accounted for on other floors. Region allocations can be
 selected and deleted, and all of these actions support undo/redo (Ctrl+Z / Ctrl+Shift+Z).
 
+### Weapons, Vehicles, and Launch Bays Go on the Hull
+
+Weapons (turrets, barbettes, bays, hard points, and defensive systems such as
+point defense, sandcasters, and repulsors), vehicles, and launch bays need access
+to space outside the ship, so they must touch the outer hull: the inner face of
+the armor at the edge of the floor. These components are marked 🛰️ in the
+component list and modal. Clicking to place, moving, rotating, or resizing them
+always keeps them on the hull: they snap to the hull side nearest the cursor and
+slide along it to the nearest free spot. Ammunition, magazines, and gunners are
+not affected.
+
+Hull components that come in quantity offer three allocation options:
+
+- **One at a time**
+- **A block of N items as one rectangle**, which snaps to the hull like a single item
+- **Fill the rest of the exposed areas for the selected floor**: choose an item
+  size (along the hull × depth); the free stretches of hull on that floor are
+  lined with blocks of items, top and bottom sides first, then left and right.
+  Anything that doesn't fit is left for other floors.
+
 ### URL Loading & Sharing
 
 You can load ship designs directly via URL parameters, enabling deep linking, bookmarking, and sharing:

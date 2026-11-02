@@ -108,10 +108,17 @@ function placeComponentOnCanvas(event, floorIndex) {
 
     // Do not round here — allow placement at sub-meter precision
 
+    // Weapons, vehicles, and launch bays must sit against the outer hull:
+    // push the component onto the hull side nearest the click
+    const requireHull = requiresHullAccess(shipData.components[data.componentIndex]);
+    if (requireHull) {
+        ({ x, y } = snapToHullEdge(x, y, compLength, compWidth, floorLength, floorWidth, armorThickness));
+    }
+
     // Try to find a valid position, adjusting if there's overlap
     const position = findValidPosition(
         floorIndex, x, y, compLength, compWidth,
-        floorLength, floorWidth, -1
+        floorLength, floorWidth, -1, requireHull
     );
 
     if (!position) {
@@ -125,7 +132,7 @@ function placeComponentOnCanvas(event, floorIndex) {
 
     // For multi-floor components, place on ALL selected floors at once
     if (data.isMultiFloor) {
-        placeMultiFloorComponent(data, x, y, compLength, compWidth, floorLength, floorWidth, canvas);
+        placeMultiFloorComponent(data, x, y, compLength, compWidth, floorLength, floorWidth, canvas, requireHull);
         return;
     }
 
@@ -140,11 +147,12 @@ function placeComponentOnCanvas(event, floorIndex) {
 /**
  * Place a component across multiple floors
  */
-function placeMultiFloorComponent(data, x, y, compLength, compWidth, floorLength, floorWidth, canvas) {
-    // Check overlap on ALL selected floors first
+function placeMultiFloorComponent(data, x, y, compLength, compWidth, floorLength, floorWidth, canvas, requireHull = false) {
+    // Check the exact position is free on ALL selected floors first
     let allValid = true;
     for (const f of data.floors) {
-        if (!findValidPosition(f, x, y, compLength, compWidth, floorLength, floorWidth, -1)) {
+        const pos = findValidPosition(f, x, y, compLength, compWidth, floorLength, floorWidth, -1, requireHull);
+        if (!pos || Math.abs(pos.x - x) > 1e-6 || Math.abs(pos.y - y) > 1e-6) {
             allValid = false;
             break;
         }

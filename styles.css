@@ -815,6 +815,12 @@ body {
     color: var(--color-warning);
 }
 
+/* Components that must touch the outer hull (weapons, vehicles, launch bays) */
+.hull-badge {
+    color: var(--color-accent-primary);
+    white-space: nowrap;
+}
+
 .component-floor-breakdown {
     color: var(--color-text-secondary);
     font-family: var(--font-mono);

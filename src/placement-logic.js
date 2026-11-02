@@ -72,13 +72,18 @@ function checkOverlap(floorIndex, x, y, length, width, excludeComponentIndex = -
 
 /**
  * Find a valid position for a component, adjusting if there's overlap
+ * @param {boolean} requireHull - Component must lie against the outer hull
+ *   (weapons, vehicles, launch bays); candidates then slide along the hull
  * @returns {object|null} {x, y} if valid position found, null otherwise
  */
-function findValidPosition(floorIndex, origX, origY, compLength, compWidth, floorLength, floorWidth, excludeComponentIndex) {
+function findValidPosition(floorIndex, origX, origY, compLength, compWidth, floorLength, floorWidth, excludeComponentIndex, requireHull = false) {
     const armorThickness = shipData.armorThickness || 0;
+    const onHull = (x, y) => !requireHull ||
+        touchesHull(x, y, compLength, compWidth, floorLength, floorWidth, armorThickness);
 
-    // First, check if original position works (both within usable area and no overlap)
+    // First, check if original position works (within usable area, on the hull if required, no overlap)
     if (isWithinUsableArea(origX, origY, compLength, compWidth, floorLength, floorWidth, armorThickness) &&
+        onHull(origX, origY) &&
         !checkOverlap(floorIndex, origX, origY, compLength, compWidth, excludeComponentIndex)) {
         return { x: origX, y: origY };
     }
@@ -99,6 +104,12 @@ function findValidPosition(floorIndex, origX, origY, compLength, compWidth, floo
 
     // Generate candidate positions by aligning to edges of overlapping components
     const candidates = [];
+
+    // Hull components slide along the hull instead
+    if (requireHull) {
+        const bounds = getHullBounds(floorLength, floorWidth, armorThickness);
+        candidates.push(...getHullCandidates(bounds, overlappingComponents, origX, origY, compLength, compWidth));
+    }
 
     for (const comp of overlappingComponents) {
         // Try placing to the right of this component
@@ -133,6 +144,7 @@ function findValidPosition(floorIndex, origX, origY, compLength, compWidth, floo
             y: Math.max(armorThickness, Math.min(pos.y, floorWidth - armorThickness - compWidth))
         }))
         .filter(pos => isWithinUsableArea(pos.x, pos.y, compLength, compWidth, floorLength, floorWidth, armorThickness) &&
+                      onHull(pos.x, pos.y) &&
                       !checkOverlap(floorIndex, pos.x, pos.y, compLength, compWidth, excludeComponentIndex))
         .map(pos => ({
             ...pos,
