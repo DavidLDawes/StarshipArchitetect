@@ -14,6 +14,10 @@
  * Free space is computed on a coordinate-compressed grid: every armor edge and
  * component edge on the floor becomes a grid line, so each grid cell is either
  * entirely occupied or entirely free. Connected free cells form regions.
+ *
+ * On a curved or sloping hull the space outside the hull counts as occupied, in
+ * thin bands (see getOutsideHullRects in hull-shapes.js). Band edges can poke
+ * slightly past the wall, so regions drawn from them should be clipped to the hull.
  */
 
 // ========================================
@@ -243,17 +247,24 @@ function analyzeFreeSpace(bounds, occupied) {
 
     // Absorb tiny free cells (where thin rows and columns cross) into a
     // neighboring region so filled regions don't leave pinhole gaps behind.
-    for (let i = 0; i < cols; i++) {
-        for (let j = 0; j < rows; j++) {
-            if (!isFree(i, j) || !isTiny(i, j)) continue;
-            const neighbors = [[i - 1, j], [i + 1, j], [i, j - 1], [i, j + 1]];
-            for (const [ni, nj] of neighbors) {
-                if (!isFree(ni, nj) || isTiny(ni, nj)) continue;
-                const r = cellRegion[ni * rows + nj];
-                if (r !== -1) {
-                    cellRegion[i * rows + j] = r;
-                    regionCells[r].push([i, j]);
-                    break;
+    // Where several thin rows and columns cross together, a tiny cell may only
+    // touch other tiny cells, so keep going until nothing more joins a region.
+    let absorbed = true;
+    while (absorbed) {
+        absorbed = false;
+        for (let i = 0; i < cols; i++) {
+            for (let j = 0; j < rows; j++) {
+                if (!isFree(i, j) || !isTiny(i, j) || cellRegion[i * rows + j] !== -1) continue;
+                const neighbors = [[i - 1, j], [i + 1, j], [i, j - 1], [i, j + 1]];
+                for (const [ni, nj] of neighbors) {
+                    if (!isFree(ni, nj)) continue;
+                    const r = cellRegion[ni * rows + nj];
+                    if (r !== -1) {
+                        cellRegion[i * rows + j] = r;
+                        regionCells[r].push([i, j]);
+                        absorbed = true;
+                        break;
+                    }
                 }
             }
         }
@@ -286,13 +297,13 @@ function analyzeFreeSpace(bounds, occupied) {
  * @returns {object} Result of analyzeFreeSpace
  */
 function analyzeFloorFreeSpace(floorIndex, floorLength, floorWidth, armorThickness = 0, placements = shipData.componentPlacements) {
-    const bounds = {
-        x0: armorThickness,
-        y0: armorThickness,
-        x1: Math.max(armorThickness, floorLength - armorThickness),
-        y1: Math.max(armorThickness, floorWidth - armorThickness)
-    };
-    return analyzeFreeSpace(bounds, getOccupiedRects(floorIndex, placements));
+    const bounds = getFloorUsableBounds(floorIndex, floorLength, floorWidth, armorThickness);
+    const occupied = getOccupiedRects(floorIndex, placements);
+    const inner = getShapedInner(floorIndex);
+    if (inner && inner.length > 0 && !getShipGeometry().floors[floorIndex - 1].isRectangle) {
+        occupied.push(...getOutsideHullRects(inner, bounds));
+    }
+    return analyzeFreeSpace(bounds, occupied);
 }
 
 /**

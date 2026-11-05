@@ -139,6 +139,14 @@ function exportLayoutSvg(ship, options = {}) {
                 'fill="none" stroke="#222222" stroke-width="0.15"/>');
         }
 
+        // Free regions on a curved or sloping floor are built from bands that can
+        // poke slightly past the wall, so they are clipped to the usable space
+        const clipId = `floor-${f}-usable`;
+        const clipRegions = floorShape && !floorShape.isRectangle && floorShape.inner.length > 0;
+        if (clipRegions) {
+            out.push(`      <clipPath id="${clipId}"><path d="${polygonPath(floorShape.inner)}"/></clipPath>`);
+        }
+
         // Placements on this floor
         ship.components.forEach((component, ci) => {
             const placement = ship.componentPlacements[ci];
@@ -154,7 +162,8 @@ function exportLayoutSvg(ship, options = {}) {
                     `data-count="${count}"`;
                 const tip = `${label} — ${svgNum(tons)} t, ${svgNum(rects.reduce((s, r) => s + r.length * r.width, 0))} m²`;
 
-                out.push(`      <g class="placement" ${attrs}>`);
+                const clip = clipRegions && pos.rects && pos.rects.length > 0 ? ` clip-path="url(#${clipId})"` : '';
+                out.push(`      <g class="placement" ${attrs}${clip}>`);
                 out.push(`        <title>${escapeXml(tip)}</title>`);
                 for (const r of rects) {
                     out.push(`        <rect x="${svgNum(r.x)}" y="${svgNum(r.y)}" width="${svgNum(r.length)}" height="${svgNum(r.width)}" ` +

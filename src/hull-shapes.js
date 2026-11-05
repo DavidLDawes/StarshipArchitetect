@@ -39,6 +39,12 @@ const HULL_BAND_STEP = 0.5;
 /** Tolerance (meters) when testing whether a point lies inside a hull */
 const HULL_FIT_EPS = 1e-6;
 
+/**
+ * Slack (meters) when working out where a rectangle fits, well inside HULL_FIT_EPS.
+ * It keeps an exact fit from collapsing to a region with no area.
+ */
+const RECT_FIT_SLACK = 1e-9;
+
 /** Lifting body proportions: length per unit of width, corner radius per unit of width */
 const LIFTING_BODY_ASPECT = 2;
 const LIFTING_BODY_CORNER = 0.25;
@@ -189,30 +195,65 @@ function insetConvexPolygon(polygon, distance) {
     if (!(distance > 0)) return polygon.slice();
 
     let result = polygon;
-    for (let i = 0; i < polygon.length && result.length > 0; i++) {
+    for (const wall of getPolygonWalls(polygon)) {
+        result = clipPolygonToHalfPlane(result, wall.nx, wall.ny, wall.offset + distance);
+    }
+    return result.length >= 3 ? result : [];
+}
+
+/**
+ * Walls of a convex polygon as half-planes: a point is on the inner side of a
+ * wall when x * nx + y * ny >= offset, and that sum minus the offset is its
+ * distance from the wall
+ * @param {Array<[number, number]>} polygon - Convex polygon in standard direction
+ * @returns {Array<{nx, ny, offset}>}
+ */
+function getPolygonWalls(polygon) {
+    const walls = [];
+    for (let i = 0; i < polygon.length; i++) {
         const [ax, ay] = polygon[i];
         const [bx, by] = polygon[(i + 1) % polygon.length];
         const size = Math.hypot(bx - ax, by - ay);
         if (size <= HULL_FIT_EPS) continue;
         const nx = -(by - ay) / size;
         const ny = (bx - ax) / size;
-        const depth = ([x, y]) => (x - ax) * nx + (y - ay) * ny - distance;
-
-        const kept = [];
-        for (let j = 0; j < result.length; j++) {
-            const p = result[j];
-            const q = result[(j + 1) % result.length];
-            const dp = depth(p);
-            const dq = depth(q);
-            if (dp >= 0) kept.push(p);
-            if ((dp >= 0) !== (dq >= 0)) {
-                const s = dp / (dp - dq);
-                kept.push([p[0] + s * (q[0] - p[0]), p[1] + s * (q[1] - p[1])]);
-            }
-        }
-        result = kept;
+        walls.push({ nx, ny, offset: ax * nx + ay * ny });
     }
-    return result.length >= 3 ? result : [];
+    return walls;
+}
+
+/**
+ * Cut away the part of a convex polygon where x * nx + y * ny < offset
+ * @returns {Array<[number, number]>} What is left, which can be empty
+ */
+function clipPolygonToHalfPlane(polygon, nx, ny, offset) {
+    const depth = ([x, y]) => x * nx + y * ny - offset;
+    const kept = [];
+    for (let i = 0; i < polygon.length; i++) {
+        const p = polygon[i];
+        const q = polygon[(i + 1) % polygon.length];
+        const dp = depth(p);
+        const dq = depth(q);
+        if (dp >= 0) kept.push(p);
+        if ((dp >= 0) !== (dq >= 0)) {
+            const s = dp / (dp - dq);
+            kept.push([p[0] + s * (q[0] - p[0]), p[1] + s * (q[1] - p[1])]);
+        }
+    }
+    return kept;
+}
+
+/**
+ * Space shared by two convex polygons
+ * @returns {Array<[number, number]>} Convex polygon, empty if they don't meet
+ */
+function intersectConvexPolygons(a, b) {
+    let result = a;
+    for (const wall of getPolygonWalls(b)) {
+        result = clipPolygonToHalfPlane(result, wall.nx, wall.ny, wall.offset);
+        if (result.length < 3) return [];
+    }
+    return result;
 }
 
 /**
@@ -242,6 +283,102 @@ function isRectInConvexPolygon(polygon, x, y, length, width, eps = HULL_FIT_EPS)
         isPointInConvexPolygon(polygon, x + length, y, eps) &&
         isPointInConvexPolygon(polygon, x + length, y + width, eps) &&
         isPointInConvexPolygon(polygon, x, y + width, eps);
+}
+
+/**
+ * Every position of a rectangle's top left corner that keeps the whole rectangle
+ * inside a convex polygon. The result is itself convex, and a position on its
+ * boundary is one where a corner of the rectangle touches a wall.
+ * @param {Array<[number, number]>} polygon - Convex polygon in standard direction
+ * @param {number} length - Rectangle size along x
+ * @param {number} width - Rectangle size along y
+ * @returns {Array<[number, number]>} Convex polygon, empty if the rectangle can't fit
+ */
+function getRectFitRegion(polygon, length, width) {
+    if (polygon.length < 3) return [];
+    const box = getPolygonBounds(polygon);
+    let region = rectanglePolygon(box.x - 1, box.y - 1, box.length + 2, box.width + 2);
+    for (const { nx, ny, offset } of getPolygonWalls(polygon)) {
+        // The corner furthest behind this wall is the one that limits the position
+        const reach = Math.min(0, length * nx) + Math.min(0, width * ny);
+        region = clipPolygonToHalfPlane(region, nx, ny, offset - reach - RECT_FIT_SLACK);
+        if (region.length < 3) return [];
+    }
+    return region;
+}
+
+/**
+ * Point on a polygon's boundary closest to a given point
+ * @returns {{x, y}|null} Null for an empty polygon
+ */
+function closestPointOnPolygonBoundary(polygon, x, y) {
+    let best = null;
+    let bestDistance = Infinity;
+    for (let i = 0; i < polygon.length; i++) {
+        const [ax, ay] = polygon[i];
+        const [bx, by] = polygon[(i + 1) % polygon.length];
+        const dx = bx - ax;
+        const dy = by - ay;
+        const lengthSquared = dx * dx + dy * dy;
+        const t = lengthSquared > 0
+            ? Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / lengthSquared))
+            : 0;
+        const px = ax + t * dx;
+        const py = ay + t * dy;
+        const distance = (px - x) * (px - x) + (py - y) * (py - y);
+        if (distance < bestDistance) {
+            bestDistance = distance;
+            best = { x: px, y: py };
+        }
+    }
+    return best;
+}
+
+/**
+ * Point inside a convex polygon closest to a given point (the point itself if
+ * it is already inside)
+ * @returns {{x, y}|null} Null for an empty polygon
+ */
+function closestPointInConvexPolygon(polygon, x, y) {
+    if (polygon.length === 0) return null;
+    // Not isPointInConvexPolygon, which skips very short sides: when a rectangle
+    // exactly fits, every side of its fit region can be that short
+    const inside = polygon.every(([ax, ay], i) => {
+        const [bx, by] = polygon[(i + 1) % polygon.length];
+        return (bx - ax) * (y - ay) - (by - ay) * (x - ax) >= 0;
+    });
+    return inside ? { x, y } : closestPointOnPolygonBoundary(polygon, x, y);
+}
+
+/**
+ * Whether a rectangle inside a convex polygon touches one of its walls. On a
+ * curved or sloping wall only a corner can touch, so that is the test.
+ * @returns {boolean}
+ */
+function isRectOnConvexPolygonWall(polygon, x, y, length, width, eps = HULL_FIT_EPS) {
+    const walls = getPolygonWalls(polygon);
+    const corners = [[x, y], [x + length, y], [x + length, y + width], [x, y + width]];
+    return corners.some(([cx, cy]) =>
+        walls.some(w => Math.abs(cx * w.nx + cy * w.ny - w.offset) <= eps) &&
+        isPointInConvexPolygon(polygon, cx, cy, eps));
+}
+
+/**
+ * Points where a vertical or horizontal line crosses a polygon's boundary
+ * @param {string} axis - 'x' for the line x = value, 'y' for the line y = value
+ * @returns {Array<{x, y}>}
+ */
+function getPolygonCrossings(polygon, axis, value) {
+    const c = axis === 'x' ? 0 : 1;
+    const crossings = [];
+    for (let i = 0; i < polygon.length; i++) {
+        const p = polygon[i];
+        const q = polygon[(i + 1) % polygon.length];
+        if (Math.min(p[c], q[c]) > value || Math.max(p[c], q[c]) < value || p[c] === q[c]) continue;
+        const t = (value - p[c]) / (q[c] - p[c]);
+        crossings.push({ x: p[0] + t * (q[0] - p[0]), y: p[1] + t * (q[1] - p[1]) });
+    }
+    return crossings;
 }
 
 // ========================================
@@ -633,6 +770,12 @@ if (typeof module !== 'undefined') {
         insetConvexPolygon,
         isPointInConvexPolygon,
         isRectInConvexPolygon,
+        intersectConvexPolygons,
+        getRectFitRegion,
+        closestPointOnPolygonBoundary,
+        closestPointInConvexPolygon,
+        isRectOnConvexPolygonWall,
+        getPolygonCrossings,
         getHullBands,
         getOutsideHullRects,
         resolveHullShape,

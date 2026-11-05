@@ -63,7 +63,7 @@ function handleComponentSelection(event, floorIndex) {
                 // Redraw with selection highlight
                 drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
                 if (isShape) {
-                    drawShapeSelectionHighlight(canvas, rects, pixelsPerMeter);
+                    drawShapeSelectionHighlight(canvas, rects, pixelsPerMeter, floorIndex);
                 } else {
                     drawSelectionHighlight(canvas, pos.x, pos.y, pLength, pWidth, pixelsPerMeter);
                 }
@@ -98,8 +98,10 @@ function drawSelectionHighlight(canvas, x, y, length, width, pixelsPerMeter) {
 /**
  * Draw selection highlight on an odd-shaped (region) placement
  */
-function drawShapeSelectionHighlight(canvas, rects, pixelsPerMeter) {
+function drawShapeSelectionHighlight(canvas, rects, pixelsPerMeter, floorIndex) {
     const ctx = canvas.getContext('2d');
+    ctx.save();
+    clipToFloorHull(ctx, floorIndex, pixelsPerMeter);
     ctx.fillStyle = 'rgba(0, 255, 0, 0.15)';
     ctx.strokeStyle = '#00ff00';
     ctx.lineWidth = 2;
@@ -113,6 +115,7 @@ function drawShapeSelectionHighlight(canvas, rects, pixelsPerMeter) {
         ctx.strokeRect(px, py, pw, ph);
     }
     ctx.setLineDash([]);
+    ctx.restore();
 }
 
 /**
@@ -203,14 +206,14 @@ function handleComponentMove(event, floorIndex) {
     let newX = clickX - sel.length / 2;
     let newY = clickY - sel.width / 2;
 
-    // Clamp to usable area (respecting armor boundary)
+    // Clamp to usable area (respecting the hull and armor of the target floor)
     const armorThickness = shipData.armorThickness || 0;
-    newX = Math.max(armorThickness, Math.min(newX, floorLength - sel.length - armorThickness));
-    newY = Math.max(armorThickness, Math.min(newY, floorWidth - sel.width - armorThickness));
+    ({ x: newX, y: newY } = clampToFloor(floorIndex, newX, newY, sel.length, sel.width,
+        floorLength, floorWidth, armorThickness));
 
     // Weapons, vehicles, and launch bays stay against the outer hull
     if (requiresHullAccess(shipData.components[sel.componentIndex])) {
-        ({ x: newX, y: newY } = snapToHullEdge(newX, newY, sel.length, sel.width,
+        ({ x: newX, y: newY } = snapToFloorHull(floorIndex, newX, newY, sel.length, sel.width,
             floorLength, floorWidth, armorThickness));
     }
 
@@ -221,10 +224,11 @@ function handleComponentMove(event, floorIndex) {
     const oldPlacement = placement.floors[sel.placementIndex];
     placement.floors.splice(sel.placementIndex, 1);
 
-    // Check for overlap at new position
-    const hasOverlap = checkOverlap(floorIndex, newX, newY, sel.length, sel.width, -1);
+    // Check it fits this floor and has no overlap at the new position
+    const blocked = !fitsFloor(floorIndex, newX, newY, sel.length, sel.width, floorLength, floorWidth, armorThickness) ||
+        checkOverlap(floorIndex, newX, newY, sel.length, sel.width, -1);
 
-    if (hasOverlap) {
+    if (blocked) {
         // Restore old position and show error
         placement.floors.splice(sel.placementIndex, 0, oldPlacement);
         canvas.style.boxShadow = '0 0 20px red';
@@ -287,25 +291,21 @@ function rotateSelectedComponent() {
     let newX = pos.x;
     let newY = pos.y;
 
-    // Adjust position if rotation would push it out of bounds (respect armor boundary)
+    // Adjust position if rotation would push it out of bounds (respect hull and armor)
     const armorThickness = shipData.armorThickness || 0;
-    if (newX + newLength > floorLength - armorThickness) {
-        newX = floorLength - newLength - armorThickness;
-    }
-    if (newY + newWidth > floorWidth - armorThickness) {
-        newY = floorWidth - newWidth - armorThickness;
-    }
-    newX = Math.max(armorThickness, newX);
-    newY = Math.max(armorThickness, newY);
+    ({ x: newX, y: newY } = clampToFloor(sel.floorIndex, newX, newY, newLength, newWidth,
+        floorLength, floorWidth, armorThickness));
 
     // Hull components keep their hull side: re-anchor to the side they were on
     // (a component on the right or bottom hull would otherwise drift off it)
     if (requiresHullAccess(shipData.components[sel.componentIndex])) {
-        const sides = getHullSides(pos.x, pos.y, sel.length, sel.width, floorLength, floorWidth, armorThickness);
-        if (sides.includes('right')) newX = floorLength - armorThickness - newLength;
-        if (sides.includes('bottom')) newY = floorWidth - armorThickness - newWidth;
-        if (!touchesHull(newX, newY, newLength, newWidth, floorLength, floorWidth, armorThickness)) {
-            ({ x: newX, y: newY } = snapToHullEdge(newX, newY, newLength, newWidth,
+        if (!getShapedInner(sel.floorIndex)) {
+            const sides = getHullSides(pos.x, pos.y, sel.length, sel.width, floorLength, floorWidth, armorThickness);
+            if (sides.includes('right')) newX = floorLength - armorThickness - newLength;
+            if (sides.includes('bottom')) newY = floorWidth - armorThickness - newWidth;
+        }
+        if (!touchesFloorHull(sel.floorIndex, newX, newY, newLength, newWidth, floorLength, floorWidth, armorThickness)) {
+            ({ x: newX, y: newY } = snapToFloorHull(sel.floorIndex, newX, newY, newLength, newWidth,
                 floorLength, floorWidth, armorThickness));
         }
     }
@@ -313,10 +313,11 @@ function rotateSelectedComponent() {
     // Temporarily remove to check overlap
     placement.floors.splice(sel.placementIndex, 1);
 
-    // Check for overlap at new position with new dimensions
-    const hasOverlap = checkOverlap(sel.floorIndex, newX, newY, newLength, newWidth, -1);
+    // Check it still fits the floor and has no overlap with the new dimensions
+    const blocked = !fitsFloor(sel.floorIndex, newX, newY, newLength, newWidth, floorLength, floorWidth, armorThickness) ||
+        checkOverlap(sel.floorIndex, newX, newY, newLength, newWidth, -1);
 
-    if (hasOverlap) {
+    if (blocked) {
         // Restore old position and show error
         placement.floors.splice(sel.placementIndex, 0, pos);
         const canvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);

@@ -43,9 +43,12 @@ function getItemDisplayName(component) {
 }
 
 /**
- * Usable floor area inside the armor (m²)
+ * Usable area of a floor inside the armor (m²)
  */
-function getUsableFloorArea() {
+function getUsableFloorArea(floorIndex) {
+    const inner = getShapedInner(floorIndex);
+    if (inner) return polygonArea(inner);
+
     const { floorLength, floorWidth } = getCurrentFloorDimensions();
     const armor = shipData.armorThickness || 0;
     return Math.max(0, floorLength - 2 * armor) * Math.max(0, floorWidth - 2 * armor);
@@ -68,6 +71,9 @@ function applyAllocations(componentIndex, floorIndex, allocations) {
         shipData.componentPlacements[componentIndex] = { floors: [] };
     }
 
+    const { floorLength, floorWidth } = getCurrentFloorDimensions();
+    const armor = shipData.armorThickness || 0;
+
     const entries = allocations.map(a => {
         const entry = {
             floor: floorIndex,
@@ -78,8 +84,9 @@ function applyAllocations(componentIndex, floorIndex, allocations) {
             count: a.count
         };
         // A region that came out as a single rectangle stays a plain block, so it
-        // can still be moved, rotated, and resized like any other placement
-        if (a.rects.length > 1) {
+        // can still be moved, rotated, and resized like any other placement. Unless
+        // it pokes slightly past a curved wall, when it stays clipped to the hull.
+        if (a.rects.length > 1 || !fitsFloor(floorIndex, a.bbox.x, a.bbox.y, a.bbox.length, a.bbox.width, floorLength, floorWidth, armor)) {
             entry.rects = a.rects;
         }
         return entry;
@@ -89,7 +96,6 @@ function applyAllocations(componentIndex, floorIndex, allocations) {
     uiState.placementHistory.push({ type: 'fill', componentIndex, entries });
     uiState.redoHistory = [];
 
-    const { floorLength, floorWidth } = getCurrentFloorDimensions();
     const canvas = document.getElementById(`floor-canvas-${floorIndex}`);
     if (canvas) {
         drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth,
@@ -179,7 +185,8 @@ function setupAllocationSection(componentIndex) {
     // Default block size: everything left, capped at what fits on one floor
     const remaining = getRemainingCount(componentIndex);
     const itemArea = calculateComponentArea(component);
-    const maxPerFloor = itemArea > 0 ? Math.max(1, Math.floor(getUsableFloorArea() / itemArea)) : 1;
+    const usableArea = getUsableFloorArea(parseInt(floorSelect.value, 10));
+    const maxPerFloor = itemArea > 0 ? Math.max(1, Math.floor(usableArea / itemArea)) : 1;
     const blockInput = document.getElementById('block-count');
     blockInput.max = remaining;
     blockInput.value = Math.min(remaining, maxPerFloor);
@@ -268,7 +275,8 @@ function updateAllocationUI() {
 function updateBlockOptions(componentIndex, component, itemArea, preview) {
     const count = getBlockCount(componentIndex);
     const blockArea = count * itemArea;
-    const usableArea = getUsableFloorArea();
+    const floorIndex = parseInt(document.getElementById('component-floor-select').value, 10);
+    const usableArea = getUsableFloorArea(floorIndex);
     const dimSelect = document.getElementById('component-dimensions');
     dimSelect.innerHTML = '';
     document.getElementById('modal-area-display').classList.add('hidden');
@@ -276,8 +284,8 @@ function updateBlockOptions(componentIndex, component, itemArea, preview) {
     if (blockArea > usableArea) {
         const maxPerFloor = Math.floor(usableArea / itemArea);
         preview.classList.add('warning');
-        preview.textContent = `A block of ${count} needs ${formatArea(blockArea)}, but a floor only has ` +
-            `${formatArea(usableArea)} usable. At most ${maxPerFloor} fit on one floor.`;
+        preview.textContent = `A block of ${count} needs ${formatArea(blockArea)}, but Floor ${floorIndex} only has ` +
+            `${formatArea(usableArea)} usable. At most ${maxPerFloor} fit on that floor.`;
         setPlaceButton('Place Block', false);
         return;
     }
@@ -416,8 +424,8 @@ function getItemSize() {
  */
 function planExposedFillForFloor(componentIndex, floorIndex, size, remaining = getRemainingCount(componentIndex)) {
     const { floorLength, floorWidth } = getCurrentFloorDimensions();
-    const bounds = getHullBounds(floorLength, floorWidth, shipData.armorThickness || 0);
-    return planExposedFill(bounds, getOccupiedRects(floorIndex), size.along, size.depth, remaining);
+    return planFloorExposedFill(floorIndex, getOccupiedRects(floorIndex), size.along, size.depth, remaining,
+        floorLength, floorWidth, shipData.armorThickness || 0);
 }
 
 /**
@@ -606,7 +614,7 @@ function handleRegionHover(event, floorIndex) {
             drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth,
                 shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
             if (hover.region) {
-                drawRegionHover(canvas, hover, floorLength);
+                drawRegionHover(canvas, hover, floorLength, floorIndex);
             }
         });
     }
@@ -651,7 +659,7 @@ function handleRegionFillClick(event, floorIndex) {
 /**
  * Draw the hovered region, the part that would be used, and an info label
  */
-function drawRegionHover(canvas, hover, floorLength) {
+function drawRegionHover(canvas, hover, floorLength, floorIndex) {
     const { region, plan, px, py } = hover;
     const state = uiState.regionFill;
     const component = shipData.components[state.componentIndex];
@@ -663,6 +671,8 @@ function drawRegionHover(canvas, hover, floorLength) {
     const toPx = r => [r.x * ppm, r.y * ppm, r.length * ppm, r.width * ppm];
 
     // Whole free region
+    ctx.save();
+    clipToFloorHull(ctx, floorIndex, ppm);
     ctx.fillStyle = plan ? 'rgba(0, 212, 255, 0.18)' : 'rgba(255, 82, 82, 0.25)';
     for (const r of region.rects) ctx.fillRect(...toPx(r));
 
@@ -678,6 +688,7 @@ function drawRegionHover(canvas, hover, floorLength) {
         }
         ctx.setLineDash([]);
     }
+    ctx.restore();
 
     // Info label near the cursor
     const fits = Math.floor((region.area + 1e-6) / itemArea);
@@ -762,7 +773,7 @@ function setupAllocationEvents() {
 
     document.getElementById('component-floor-select').addEventListener('change', () => {
         const mode = getAllocationMode();
-        if (mode === 'fill-floor') updateAllocationUI();
+        if (mode === 'fill-floor' || mode === 'block') updateAllocationUI();
         else if (mode === 'fill-exposed') updateFillExposedPreview();
     });
 
