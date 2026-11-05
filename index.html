@@ -124,6 +124,7 @@
             <p class="section-hint">Click on a component below to configure its dimensions and place it on a floor.</p>
 
             <!-- Floor Selector Dropdown -->
+            <div id="ship-space-summary" class="ship-space-summary"></div>
             <div id="floor-selector-container" class="floor-selector-container">
                 <label for="floor-selector">Select Floor:</label>
                 <select id="floor-selector" class="dimension-select">
@@ -190,9 +191,9 @@
                     <div class="allocation-modes" role="radiogroup" aria-label="How to allocate">
                         <label class="allocation-mode">
                             <input type="radio" name="allocation-mode" value="single" checked>
-                            <span>One at a time</span>
+                            <span id="allocation-single-text">One at a time</span>
                         </label>
-                        <label class="allocation-mode">
+                        <label class="allocation-mode" id="allocation-block-option">
                             <input type="radio" name="allocation-mode" value="block">
                             <span>A block of
                                 <input type="number" id="block-count" class="block-count-input" min="1" value="1" aria-label="Items in block">
@@ -200,11 +201,11 @@
                         </label>
                         <label class="allocation-mode" data-scope="interior">
                             <input type="radio" name="allocation-mode" value="fill-floor">
-                            <span>Fill the rest of the selected floor</span>
+                            <span id="allocation-fill-floor-text">Fill the rest of the selected floor</span>
                         </label>
                         <label class="allocation-mode" data-scope="interior">
                             <input type="radio" name="allocation-mode" value="fill-region">
-                            <span>Fill a free region (pick it on the map)</span>
+                            <span id="allocation-fill-region-text">Fill a free region (pick it on the map)</span>
                         </label>
                         <label class="allocation-mode" data-scope="hull">
                             <input type="radio" name="allocation-mode" value="fill-exposed">
@@ -220,6 +221,7 @@
                         <!-- Options populated dynamically -->
                     </select>
                 </div>
+                <div id="dimensions-note" class="allocation-preview warning hidden" aria-live="polite"></div>
 
                 <div id="floor-select-row" class="modal-row">
                     <label for="component-floor-select">Place on Floor:</label>

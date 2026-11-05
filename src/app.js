@@ -248,6 +248,7 @@ function renderFloors() {
                 <div class="floor-dimensions">${isShaped
                     ? describeFloorSize(floors[i - 1], shape)
                     : `${floorLength} × ${floorWidth.toFixed(1)} meters`}, ${shipData.ceilingHeight} meters tall</div>
+                <div class="floor-free" id="floor-free-${i}"></div>
                 ${unusableFloors.includes(i) ? '<div class="floor-warning">⚠️ No usable space: the armor fills this floor</div>' : ''}
             </div>
         `;
@@ -320,10 +321,11 @@ function renderComponents() {
         const placedCount = getPlacedCount(placement);
         const totalQuantity = component.quantity || 1;
         const remainingCount = totalQuantity - placedCount;
-        const isFullyPlaced = placedCount >= totalQuantity;
+        const placedByTons = canTakeIrregularSpace(component);
+        const isFullyPlaced = isComponentFullyPlaced(component, placement);
 
         // Skip fully placed single-item components
-        if (isFullyPlaced && totalQuantity === 1) {
+        if (isFullyPlaced && (totalQuantity === 1 || placedByTons)) {
             return; // Don't render this component
         }
 
@@ -349,7 +351,15 @@ function renderComponents() {
         // Build placement info text
         let placementInfo = '';
         if (placedCount > 0) {
-            if (totalQuantity > 1) {
+            if (placedByTons) {
+                const byFloor = getPlacedTonsByFloor(placement);
+                const breakdown = Object.keys(byFloor)
+                    .sort((a, b) => a - b)
+                    .map(f => `F${f}: ${byFloor[f].toFixed(1)}`)
+                    .join(', ');
+                placementInfo = `<div class="component-placement-info">📍 Placed ${getPlacedTons(placement).toFixed(1)} of ${component.tons} tons` +
+                    ` <span class="component-floor-breakdown">(${breakdown})</span></div>`;
+            } else if (totalQuantity > 1) {
                 // Per-floor breakdown helps account for items split across floors
                 const byFloor = getPlacedCountByFloor(placement);
                 const breakdown = Object.keys(byFloor)
@@ -373,6 +383,7 @@ function renderComponents() {
                 <span>${formatComponentTons(component)}</span>
                 <span>💰 ${component.cost.toLocaleString()} MCr</span>
                 ${requiresHullAccess(component) ? '<span class="hull-badge" title="Needs access to space: must touch the outer hull">🛰️ Hull</span>' : ''}
+                ${placedByTons ? '<span class="hull-badge" title="Can fill irregular free space, split across areas and floors">🧩 Any shape</span>' : ''}
             </div>
             ${placementInfo}
         `;

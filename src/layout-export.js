@@ -58,9 +58,10 @@ function polygonPath(polygon) {
 /**
  * Text shown on a placement: "Staterooms ×140", "Bridge"
  */
-function exportLabel(component, count) {
+function exportLabel(component, count, tons = 0) {
     let name = baseItemName(component);
     if (component.overheadPerItem > 0) name += ' + rec';
+    if (tons > 0) return `${name} ${Number(tons.toFixed(1))} t`;
     return count > 1 ? `${name} ×${count}` : name;
 }
 
@@ -156,8 +157,8 @@ function exportLayoutSvg(ship, options = {}) {
                 const rects = getPlacementRects(pos, placement);
                 const count = getPlacementCount(pos);
                 const colors = exportColors(ci);
-                const label = exportLabel(component, count);
-                const tons = (component.tonsPerItem || component.tons) * count;
+                const label = exportLabel(component, count, pos.tons);
+                const tons = pos.tons > 0 ? pos.tons : (component.tonsPerItem || component.tons) * count;
                 const attrs = `data-component="${escapeXml(keys[ci])}" data-category="${escapeXml(component.category || '')}" ` +
                     `data-count="${count}"`;
                 const tip = `${label} — ${svgNum(tons)} t, ${svgNum(rects.reduce((s, r) => s + r.length * r.width, 0))} m²`;

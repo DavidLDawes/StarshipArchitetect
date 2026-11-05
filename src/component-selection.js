@@ -69,7 +69,9 @@ function handleComponentSelection(event, floorIndex) {
                 }
 
                 // Show instructions
-                showSelectionInstructions(isShape ? getPlacementCount(pos) : 0);
+                showSelectionInstructions(isShape
+                    ? (pos.tons > 0 ? `${pos.tons.toFixed(1)} tons` : `${getPlacementCount(pos)} items`)
+                    : '');
 
                 return;
             }
@@ -120,9 +122,9 @@ function drawShapeSelectionHighlight(canvas, rects, pixelsPerMeter, floorIndex) 
 
 /**
  * Show selection mode instructions
- * @param {number} regionCount - Item count when a region placement is selected (0 otherwise)
+ * @param {string} regionContents - What a selected region placement holds ('' otherwise)
  */
-function showSelectionInstructions(regionCount = 0) {
+function showSelectionInstructions(regionContents = '') {
     let instructions = document.getElementById('placement-instructions');
     if (!instructions) {
         instructions = document.createElement('div');
@@ -130,8 +132,8 @@ function showSelectionInstructions(regionCount = 0) {
         instructions.className = 'placement-instructions';
         document.body.appendChild(instructions);
     }
-    instructions.textContent = regionCount > 0
-        ? `Region holding ${regionCount} items | Delete to remove | Click elsewhere or Escape to deselect`
+    instructions.textContent = regionContents
+        ? `Region holding ${regionContents} | Delete to remove | Click elsewhere or Escape to deselect`
         : 'Drag edges to resize | Click to move | R/L to rotate | Delete to remove | Escape to cancel';
     instructions.classList.remove('hidden');
 }

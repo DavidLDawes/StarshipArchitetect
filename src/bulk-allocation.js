@@ -4,7 +4,7 @@
  *
  *   single      — place items one at a time (the original behavior)
  *   block       — place N items as one rectangle
- *   fill-floor  — consume the free space on a chosen floor with as many items as fit
+ *   fill-floor  — use the free space on a chosen floor for as many items as fit
  *   fill-region — pick an odd-shaped free region on the map; it is measured and
  *                 assigned however many items fit
  *   fill-exposed — line the free stretches of outer hull on a chosen floor with
@@ -12,6 +12,11 @@
  *
  * Components that need hull access get single / block / fill-exposed; all
  * others get single / block / fill-floor / fill-region.
+ *
+ * Components that can take irregular space (fuel, cargo...: see component-dimensions.js)
+ * are placed by tonnage whatever their quantity. They get single / fill-floor /
+ * fill-region, where single is one rectangle holding all that's left, and the fill
+ * modes use any free space down to small gaps, splitting across regions and floors.
  *
  * Dependencies:
  * - placement-geometry.js (free-space analysis and allocation planning)
@@ -26,11 +31,14 @@
 // ========================================
 
 /**
- * Items of a component not yet placed
+ * Items of a component not yet placed, or tons for one placed by tonnage
  */
 function getRemainingCount(componentIndex) {
     const component = shipData.components[componentIndex];
     if (!component) return 0;
+    if (canTakeIrregularSpace(component)) {
+        return getRemainingTons(component, shipData.componentPlacements[componentIndex]);
+    }
     const total = component.quantity || 1;
     return Math.max(0, total - getPlacedCount(shipData.componentPlacements[componentIndex]));
 }
@@ -52,6 +60,39 @@ function getUsableFloorArea(floorIndex) {
     const { floorLength, floorWidth } = getCurrentFloorDimensions();
     const armor = shipData.armorThickness || 0;
     return Math.max(0, floorLength - 2 * armor) * Math.max(0, floorWidth - 2 * armor);
+}
+
+/**
+ * Floor area of a tonnage
+ */
+function tonsToArea(tons) {
+    return tons * SQM_PER_TON / shipData.ceilingHeight;
+}
+
+/**
+ * Show how much floor is free on one floor and across the ship.
+ * Runs on every redraw, so a move or resize is reflected straight away.
+ */
+function updateFloorSpaceReadout(floorIndex) {
+    const label = document.getElementById(`floor-free-${floorIndex}`);
+    if (label) {
+        const usable = getUsableFloorArea(floorIndex);
+        const free = Math.max(0, usable - getFloorUsedArea(floorIndex));
+        const text = `Free: ${free.toFixed(0)} of ${usable.toFixed(0)} m²`;
+        if (label.textContent !== text) label.textContent = text;
+    }
+
+    const summary = document.getElementById('ship-space-summary');
+    if (!summary) return;
+    let free = 0;
+    for (let f = 1; f <= shipData.numFloors; f++) {
+        free += Math.max(0, getUsableFloorArea(f) - getFloorUsedArea(f));
+    }
+    const needed = getStillToPlaceArea(shipData.components, shipData.componentPlacements);
+    const asTons = area => (area * shipData.ceilingHeight / SQM_PER_TON).toFixed(1);
+    const text = `Free floor: ${free.toFixed(0)} m² (${asTons(free)} t) · Still to place: ${needed.toFixed(0)} m² (${asTons(needed)} t)`;
+    if (summary.textContent !== text) summary.textContent = text;
+    summary.classList.toggle('warning', needed > free + 0.5);
 }
 
 /**
@@ -80,9 +121,12 @@ function applyAllocations(componentIndex, floorIndex, allocations) {
             x: a.bbox.x,
             y: a.bbox.y,
             length: a.bbox.length,
-            width: a.bbox.width,
-            count: a.count
+            width: a.bbox.width
         };
+        if (a.count) entry.count = a.count;
+        if (canTakeIrregularSpace(shipData.components[componentIndex])) {
+            entry.tons = a.area * shipData.ceilingHeight / SQM_PER_TON;
+        }
         // A region that came out as a single rectangle stays a plain block, so it
         // can still be moved, rotated, and resized like any other placement. Unless
         // it pokes slightly past a curved wall, when it stays clipped to the hull.
@@ -154,15 +198,26 @@ function setupAllocationSection(componentIndex) {
     modal.dataset.hullAccess = String(requiresHullAccess(component));
 
     const total = component ? component.quantity || 1 : 1;
-    if (total <= 1) {
+    const byTons = canTakeIrregularSpace(component);
+    modal.dataset.placedByTons = String(byTons);
+    if (total <= 1 && !byTons) {
         section.classList.add('hidden');
         setRowVisible('dimensions-row', true);
         setRowVisible('floor-select-row', true);
         setPlaceButton('Place Component', true);
+        updateDimensionOptions();
         return;
     }
 
     section.classList.remove('hidden');
+    document.getElementById('allocation-block-option').classList.toggle('hidden', byTons);
+    document.getElementById('allocation-single-text').textContent = byTons ? 'All that is left as one rectangle' : 'One at a time';
+    document.getElementById('allocation-fill-floor-text').textContent = byTons
+        ? 'Fill free space on the selected floor, any shape'
+        : 'Fill the rest of the selected floor';
+    document.getElementById('allocation-fill-region-text').textContent = byTons
+        ? 'Fill free regions, any shape (pick them on the map)'
+        : 'Fill a free region (pick it on the map)';
 
     // Hull components (weapons, vehicles, launch bays) fill exposed hull instead
     // of free floor space; show only the modes that apply
@@ -177,10 +232,12 @@ function setupAllocationSection(componentIndex) {
         for (let i = 1; i <= shipData.numFloors; i++) {
             const option = document.createElement('option');
             option.value = i;
-            option.textContent = `Floor ${i}`;
+            option.textContent = getFloorOptionLabel(i);
             floorSelect.appendChild(option);
         }
     }
+    // Start from the best floor, not whatever this dropdown last showed
+    floorSelect.value = getSuggestedFloors(1)[0];
 
     // Default block size: everything left, capped at what fits on one floor
     const remaining = getRemainingCount(componentIndex);
@@ -189,7 +246,7 @@ function setupAllocationSection(componentIndex) {
     const maxPerFloor = itemArea > 0 ? Math.max(1, Math.floor(usableArea / itemArea)) : 1;
     const blockInput = document.getElementById('block-count');
     blockInput.max = remaining;
-    blockInput.value = Math.min(remaining, maxPerFloor);
+    blockInput.value = byTons ? 1 : Math.min(remaining, maxPerFloor);
 
     document.querySelector('input[name="allocation-mode"][value="single"]').checked = true;
     updateAllocationUI();
@@ -230,9 +287,12 @@ function updateAllocationUI() {
     const preview = document.getElementById('allocation-preview');
 
     const hull = modal.dataset.hullAccess === 'true';
-    document.getElementById('allocation-status').textContent =
-        `${total - remaining} of ${total} placed · ${remaining} remaining · ${formatArea(itemArea)} each` +
-        (hull ? ' · must touch the outer hull' : '');
+    const byTons = modal.dataset.placedByTons === 'true';
+    document.getElementById('allocation-status').textContent = byTons
+        ? `${(component.tons - remaining).toFixed(1)} of ${component.tons} tons placed · ` +
+          `${remaining.toFixed(1)} tons left (${formatArea(tonsToArea(remaining))}) · can take any shape`
+        : `${total - remaining} of ${total} placed · ${remaining} remaining · ${formatArea(itemArea)} each` +
+          (hull ? ' · must touch the outer hull' : '');
 
     // Single mode restores the layout openComponentModal chose; the bulk modes
     // always work on one floor at a time
@@ -247,13 +307,14 @@ function updateAllocationUI() {
     if (mode === 'single') {
         preview.textContent = '';
         preview.classList.remove('warning');
-        updateDimensionOptions();
         setPlaceButton('Place Component', true);
+        updateDimensionOptions();
     } else if (mode === 'block') {
         updateBlockOptions(componentIndex, component, itemArea, preview);
     } else if (mode === 'fill-floor') {
         document.getElementById('modal-area-display').classList.add('hidden');
-        updateFillFloorPreview(componentIndex, component, itemArea, remaining, preview);
+        if (byTons) updateTonnageFillPreview(remaining, preview);
+        else updateFillFloorPreview(componentIndex, component, itemArea, remaining, preview);
     } else if (mode === 'fill-exposed') {
         document.getElementById('modal-area-display').classList.add('hidden');
         populateItemSizeOptions(component);
@@ -262,7 +323,9 @@ function updateAllocationUI() {
         document.getElementById('modal-area-display').classList.add('hidden');
         preview.classList.remove('warning');
         preview.textContent = remaining > 0
-            ? `Hover over free space on any floor to see its area and how many ${getItemDisplayName(component)} fit, ` +
+            ? (byTons
+                ? `Hover over free space on any floor to see how many tons of ${getItemDisplayName(component)} it holds, `
+                : `Hover over free space on any floor to see its area and how many ${getItemDisplayName(component)} fit, `) +
               'then click to assign them. Keep clicking regions until done; press Escape to stop.'
             : 'All items are already placed.';
         setPlaceButton('Pick Region on Map', remaining > 0);
@@ -290,11 +353,10 @@ function updateBlockOptions(componentIndex, component, itemArea, preview) {
         return;
     }
 
-    const { floorArea, floorWidth, floorLength } = getCurrentFloorDimensions();
     const blockTons = count * getEffectiveTonsPerItem(component);
-    const dimInfo = generateComponentDimensionOptions(
+    const dimInfo = getDeckDimensionOptions(
         { ...component, tons: blockTons, tonsPerItem: blockTons, overheadPerItem: 0 },
-        floorArea, floorLength, floorWidth, 1
+        floorIndex, 1
     );
     for (const opt of dimInfo.options) {
         const option = document.createElement('option');
@@ -357,6 +419,36 @@ function updateFillFloorPreview(componentIndex, component, itemArea, remaining, 
 }
 
 /**
+ * Fill-floor mode for a component placed by tonnage
+ */
+function updateTonnageFillPreview(remaining, preview) {
+    const floorIndex = parseInt(document.getElementById('component-floor-select').value, 10);
+    if (!floorIndex || remaining <= 0) {
+        preview.textContent = remaining <= 0 ? 'All of it is already placed.' : '';
+        setPlaceButton('Fill Floor', false);
+        return;
+    }
+
+    const plan = planAreaFill(analyzeFloorNow(floorIndex).regions, tonsToArea(remaining));
+    const area = plan.reduce((sum, a) => sum + a.area, 0);
+    if (plan.length === 0) {
+        preview.classList.add('warning');
+        preview.textContent = `Floor ${floorIndex} has no free space left to fill.`;
+        setPlaceButton('Fill Floor', false);
+        return;
+    }
+
+    const tons = area * shipData.ceilingHeight / SQM_PER_TON;
+    const areas = plan.length === 1 ? '1 area' : `${plan.length} areas`;
+    preview.classList.remove('warning');
+    preview.textContent = tons >= remaining - 0.01
+        ? `All ${remaining.toFixed(1)} tons left fit on Floor ${floorIndex}, in ${areas}.`
+        : `Floor ${floorIndex} holds ${tons.toFixed(1)} of the ${remaining.toFixed(1)} tons left, in ${areas}. ` +
+          'The rest can go on other floors.';
+    setPlaceButton(`Fill Floor ${floorIndex} with ${tons.toFixed(1)} tons`, true);
+}
+
+/**
  * Execute fill-floor from the modal
  */
 function executeFloorFill() {
@@ -367,7 +459,9 @@ function executeFloorFill() {
     if (!component || !floorIndex) return;
 
     const analysis = analyzeFloorNow(floorIndex);
-    const plan = planFloorFill(analysis.regions, calculateComponentArea(component), getRemainingCount(componentIndex));
+    const plan = canTakeIrregularSpace(component)
+        ? planAreaFill(analysis.regions, tonsToArea(getRemainingCount(componentIndex)))
+        : planFloorFill(analysis.regions, calculateComponentArea(component), getRemainingCount(componentIndex));
     if (plan.length === 0) return;
 
     closeComponentModal();
@@ -389,9 +483,9 @@ function executeFloorFill() {
  * first number is the size along the hull and the second the depth inboard
  */
 function populateItemSizeOptions(component) {
-    const { floorArea, floorWidth, floorLength } = getCurrentFloorDimensions();
+    const floorIndex = parseInt(document.getElementById('component-floor-select').value, 10);
     const single = { ...component, tons: component.tonsPerItem || component.tons };
-    const dimInfo = generateComponentDimensionOptions(single, floorArea, floorLength, floorWidth, 1);
+    const dimInfo = getDeckDimensionOptions(single, floorIndex, 1);
     const options = dimInfo.options.slice();
 
     // Very small items fall under the generator's 1 m minimum: offer a square
@@ -590,8 +684,10 @@ function getRegionUnderMouse(event, floorIndex) {
         const key = `${floorIndex}:${region.index}:${direction}`;
         if (!(key in state.plans)) {
             const component = shipData.components[state.componentIndex];
-            state.plans[key] = planRegionAllocation(region, calculateComponentArea(component),
-                getRemainingCount(state.componentIndex), direction);
+            state.plans[key] = canTakeIrregularSpace(component)
+                ? planRegionArea(region, tonsToArea(getRemainingCount(state.componentIndex)), direction)
+                : planRegionAllocation(region, calculateComponentArea(component),
+                    getRemainingCount(state.componentIndex), direction);
         }
         plan = state.plans[key];
     }
@@ -693,7 +789,14 @@ function drawRegionHover(canvas, hover, floorLength, floorIndex) {
     // Info label near the cursor
     const fits = Math.floor((region.area + 1e-6) / itemArea);
     const lines = [`Free region: ${formatArea(region.area)}`];
-    if (!plan) {
+    if (canTakeIrregularSpace(component)) {
+        if (plan) {
+            const tons = plan.area * shipData.ceilingHeight / SQM_PER_TON;
+            lines.push(`Click to assign ${tons.toFixed(1)} tons of ${name} (${Math.max(0, remaining - tons).toFixed(1)} left after)`);
+        } else {
+            lines.push('Too small to be worth filling');
+        }
+    } else if (!plan) {
         lines.push(`Too small for one ${name} (${formatArea(itemArea)})`);
     } else if (fits > plan.count) {
         lines.push(`Room for ${fits}; click to pack all ${plan.count} remaining`);
@@ -746,8 +849,9 @@ function showRegionFillInstructions() {
         instructions.className = 'placement-instructions';
         document.body.appendChild(instructions);
     }
+    const remaining = getRemainingCount(state.componentIndex);
     instructions.textContent = `Filling regions with ${getItemDisplayName(component)} ` +
-        `(${getRemainingCount(state.componentIndex)} remaining). Click a free area to assign; Escape to finish.`;
+        `(${canTakeIrregularSpace(component) ? `${remaining.toFixed(1)} tons` : remaining} remaining). Click a free area to assign; Escape to finish.`;
     instructions.classList.remove('hidden');
 }
 
@@ -774,7 +878,14 @@ function setupAllocationEvents() {
     document.getElementById('component-floor-select').addEventListener('change', () => {
         const mode = getAllocationMode();
         if (mode === 'fill-floor' || mode === 'block') updateAllocationUI();
-        else if (mode === 'fill-exposed') updateFillExposedPreview();
+        else if (mode === 'fill-exposed') {
+            populateItemSizeOptions(shipData.components[parseInt(document.getElementById('component-modal').dataset.componentIndex, 10)]);
+            updateFillExposedPreview();
+        } else if (mode === 'single') {
+            // Sizes depend on the floor on a shaped hull
+            setPlaceButton('Place Component', true);
+            updateDimensionOptions();
+        }
     });
 
     document.getElementById('component-dimensions').addEventListener('change', () => {

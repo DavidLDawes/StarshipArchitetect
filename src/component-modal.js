@@ -25,23 +25,26 @@ function updateDimensionOptions() {
 
     if (!component) return;
 
-    const { floorArea, floorWidth, floorLength } = getCurrentFloorDimensions();
-
-    // Get selected floor count
-    let numSelectedFloors = 1;
+    // Get selected floors
+    let selectedFloors;
     if (modal.dataset.isMultiFloor === 'true') {
-        const checkboxes = document.querySelectorAll('input[name="component-floors"]:checked');
-        numSelectedFloors = checkboxes.length;
-
-        // Need at least 1 floor selected
-        if (numSelectedFloors === 0) {
-            numSelectedFloors = 1;
-        }
+        selectedFloors = Array.from(document.querySelectorAll('input[name="component-floors"]:checked'))
+            .map(cb => parseInt(cb.value, 10));
+    } else {
+        selectedFloors = [parseInt(document.getElementById('component-floor-select').value, 10)];
     }
 
-    // Recalculate dimensions with selected floor count
-    const dimInfo = generateComponentDimensionOptions(
-        component, floorArea, floorLength, floorWidth, numSelectedFloors
+    // Need at least 1 floor selected
+    if (selectedFloors.length === 0 || selectedFloors.some(isNaN)) {
+        selectedFloors = getSuggestedFloors(1);
+    }
+    const numSelectedFloors = selectedFloors.length;
+
+    // Recalculate dimensions with selected floors
+    const dimInfo = getDeckDimensionOptions(
+        getPlacementTarget(component, shipData.componentPlacements[componentIndex]),
+        selectedFloors,
+        numSelectedFloors
     );
 
     // Update dimension dropdown
@@ -54,8 +57,33 @@ function updateDimensionOptions() {
         dimSelect.appendChild(option);
     }
 
+    // Say why there is nothing to choose, rather than offering nothing
+    const note = document.getElementById('dimensions-note');
+    if (dimInfo.options.length === 0) {
+        const floorText = numSelectedFloors === 1
+            ? `Floor ${selectedFloors[0]}`
+            : `the space shared by floors ${selectedFloors.join(', ')}`;
+        note.textContent = `No rectangle of ${dimInfo.areaPerFloor.toFixed(1)} m² fits ${floorText}. ` +
+            (modal.dataset.isMultiFloor === 'true' ? 'Try other floors, or span more floors.' : 'Try a larger floor.') +
+            (canTakeIrregularSpace(component) ? ' Or fill free space instead, which can take any shape.' : '');
+        note.classList.remove('hidden');
+        setPlaceButton('Place Component', false);
+    } else {
+        note.textContent = '';
+        note.classList.add('hidden');
+        setPlaceButton('Place Component', true);
+    }
+
     // Update area display
     updateAreaDisplay(dimInfo.componentArea, numSelectedFloors, dimInfo.areaPerFloor);
+}
+
+/**
+ * Text for a floor in the floor dropdown: a shaped hull's floors differ, so show their size
+ */
+function getFloorOptionLabel(floorIndex) {
+    if (!getShapedInner(floorIndex)) return `Floor ${floorIndex}`;
+    return `Floor ${floorIndex} (${getUsableFloorArea(floorIndex).toFixed(0)} m²)`;
 }
 
 /**
@@ -90,10 +118,9 @@ function openComponentModal(componentIndex) {
 
     uiState.selectedComponent = componentIndex;
 
-    const { floorArea, floorWidth, floorLength } = getCurrentFloorDimensions();
-
-    const dimInfo = generateComponentDimensionOptions(
-        component, floorArea, floorLength, floorWidth
+    const dimInfo = getDeckDimensionOptions(
+        getPlacementTarget(component, shipData.componentPlacements[componentIndex]),
+        getSuggestedFloors(1)[0]
     );
 
     // Populate modal
@@ -112,17 +139,11 @@ function openComponentModal(componentIndex) {
         ${requiresHullAccess(component) ? '<span class="hull-badge" title="Needs access to space: must touch the outer hull">🛰️ Outer hull</span>' : ''}
     `;
 
-    // Populate dimension dropdown
+    // The dimension dropdown is filled once the floors are chosen, below
     dimSelect.innerHTML = '';
-    for (const opt of dimInfo.options) {
-        const option = document.createElement('option');
-        option.value = `${opt.length},${opt.width}`;
-        option.textContent = opt.label;
-        dimSelect.appendChild(option);
-    }
 
     // Calculate size category for better user guidance
-    const areaRatio = dimInfo.componentArea / floorArea;
+    const areaRatio = dimInfo.componentArea / dimInfo.floorArea;
     const isMultiFloorRequired = areaRatio > 1.0;
     const isLargeItem = areaRatio > 0.25 && areaRatio <= 1.0;
 
@@ -159,7 +180,7 @@ function openComponentModal(componentIndex) {
             label.className = 'floor-checkbox-label';
             label.innerHTML = `
                 <input type="checkbox" name="component-floors" value="${i}">
-                Floor ${i}
+                ${getFloorOptionLabel(i)}
             `;
             floorCheckboxes.appendChild(label);
         }
@@ -172,15 +193,15 @@ function openComponentModal(componentIndex) {
         // Auto-select floors based on component type
         if (isMultiFloorRequired) {
             // Auto-check the minimum required floors
-            for (let i = 1; i <= dimInfo.floorsNeeded && i <= shipData.numFloors; i++) {
+            for (const i of getSuggestedFloors(dimInfo.floorsNeeded)) {
                 const checkbox = document.querySelector(`input[name="component-floors"][value="${i}"]`);
                 if (checkbox) checkbox.checked = true;
             }
             // Initialize area display with minimum floors needed
             updateAreaDisplay(dimInfo.componentArea, dimInfo.floorsNeeded, dimInfo.areaPerFloor);
         } else {
-            // For large items, only check first floor by default (user can add more)
-            const firstCheckbox = document.querySelector('input[name="component-floors"][value="1"]');
+            // For large items, only check one floor by default (user can add more)
+            const firstCheckbox = document.querySelector(`input[name="component-floors"][value="${getSuggestedFloors(1)[0]}"]`);
             if (firstCheckbox) firstCheckbox.checked = true;
             updateAreaDisplay(dimInfo.componentArea, 1, dimInfo.componentArea);
         }
@@ -195,9 +216,10 @@ function openComponentModal(componentIndex) {
         for (let i = 1; i <= shipData.numFloors; i++) {
             const option = document.createElement('option');
             option.value = i;
-            option.textContent = `Floor ${i}`;
+            option.textContent = getFloorOptionLabel(i);
             floorSelect.appendChild(option);
         }
+        floorSelect.value = getSuggestedFloors(1)[0];
 
         // Hide area display for single-floor components
         document.getElementById('modal-area-display').classList.add('hidden');
