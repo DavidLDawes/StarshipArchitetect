@@ -10,6 +10,7 @@ module.exports = {
     'src/placement-logic.js',
     'src/placement-geometry.js',
     'src/hull-access.js',
+    'src/hull-shapes.js',
     'src/rec-health.js',
     'src/layout-io.js',
     'src/layout-export.js',
