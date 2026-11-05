@@ -30,11 +30,102 @@ function parseCSVLine(line) {
     return fields;
 }
 
+// ========================================
+// Ship Configuration
+// ========================================
+
+/**
+ * Specific hull shapes and the general class each belongs to. The first pattern
+ * found in the configuration text wins.
+ */
+const CONFIGURATION_SHAPES = [
+    { shape: 'rectangular', general: 'standard', pattern: /\brectang(?:le|ular)\b/i },
+    { shape: 'wedge', general: 'standard', pattern: /\bwedge\b/i },
+    { shape: 'cone', general: 'standard', pattern: /\bcon(?:e|ical)\b/i },
+    { shape: 'sphere', general: 'standard', pattern: /\bspher(?:e|ical)\b/i },
+    { shape: 'cylinder', general: 'standard', pattern: /\bcylind(?:er|rical)\b/i },
+    { shape: 'wing', general: 'streamlined', pattern: /\bwing(?:ed)?\b/i },
+    { shape: 'disk', general: 'streamlined', pattern: /\bdis[ck]\b/i },
+    { shape: 'lifting-body', general: 'streamlined', pattern: /\blifting(?:[\s-]*bod(?:y|ies))?\b/i }
+];
+
+/** Shape used when the text names a general class but no specific shape */
+const CONFIGURATION_DEFAULTS = {
+    standard: 'rectangular',
+    streamlined: 'lifting-body',
+    distributed: 'distributed'
+};
+
+/**
+ * Read a ship configuration such as "Streamlined Lifting Body configuration".
+ * Designs with no configuration, or one that can't be understood, are standard
+ * rectangular, which is how every older design has always been laid out.
+ * @param {string} text - Configuration text from the design file
+ * @returns {{general: string, shape: string, text: string}} General class, specific
+ *   shape, and the original text
+ */
+function parseConfiguration(text = '') {
+    const original = String(text).trim();
+
+    const named = CONFIGURATION_SHAPES.find(s => s.pattern.test(original));
+    if (named) {
+        return { general: named.general, shape: named.shape, text: original };
+    }
+
+    const generalMatch = original.match(/\b(standard|streamlined|distributed)\b/i);
+    const general = generalMatch ? generalMatch[1].toLowerCase() : 'standard';
+    return { general, shape: CONFIGURATION_DEFAULTS[general], text: original };
+}
+
+/**
+ * Read the first line of the current design format:
+ *   Courier, Streamlined Lifting Body configuration, 300 tons, Tech Level G
+ * @param {string[]} fields - Fields of the first line
+ * @returns {{shipName: string, configurationText: string, tons: number}|null}
+ *   Null if this line is not a design line (older formats start with a header
+ *   row or "Name,"). Tons is 0 if the line doesn't give a tonnage.
+ */
+function parseDesignLine(fields) {
+    const first = fields[0].trim().toLowerCase();
+    if (!first || first === 'category' || first === 'name') return null;
+
+    const configIndex = fields.findIndex((field, i) => i > 0 && /\bconfiguration\b/i.test(field));
+    // A thousands separator may have split the tonnage across fields, so search them rejoined
+    const tonsMatch = fields.slice(1).join(',').match(/(\d[\d,]*(?:\.\d+)?)\s*d?tons?\b/i);
+    if (configIndex === -1 && !tonsMatch) return null;
+
+    // An unquoted comma in the ship name leaves the name spread over several fields
+    const nameEnd = configIndex === -1 ? 1 : configIndex;
+    return {
+        shipName: fields.slice(0, nameEnd).join(',').trim(),
+        configurationText: configIndex === -1 ? '' : fields[configIndex].trim(),
+        tons: tonsMatch ? parseFloat(tonsMatch[1].replace(/,/g, '')) : 0
+    };
+}
+
+/**
+ * Index of the "Category,Item,..." row, searching from a given line
+ * @param {string[]} lines - CSV lines
+ * @param {number} start - Line to start from
+ * @returns {number} Line index, or -1 if there is no such row
+ */
+function findCategoryRow(lines, start) {
+    for (let i = start; i < lines.length; i++) {
+        if (parseCSVLine(lines[i])[0].trim().toLowerCase() === 'category') return i;
+    }
+    return -1;
+}
+
+// ========================================
+// CSV Parsing
+// ========================================
+
 /**
  * Parse CSV content into ship components
  * @param {string} csvContent - Raw CSV content
  * @param {string} filename - Optional filename (used as ship name if not in CSV)
- * @returns {object} Parsed ship data with components, totals, and ship name
+ * @returns {object} Parsed ship data with components, totals, ship name, and
+ *   configuration ({general, shape, text} from parseConfiguration)
  */
 function parseCSV(csvContent, filename = '') {
     const lines = csvContent.trim().split(/\r?\n/);
@@ -47,6 +138,8 @@ function parseCSV(csvContent, filename = '') {
     let totalTons = 0;
     let totalCost = 0;
     let isSmallCraftFormat = false; // Track if using small craft format
+    let configurationText = '';
+    let hullTons = 0; // Tonnage stated on a design line; takes priority over the Total row
 
     // Detect small craft format (starts with "Name,")
     const firstLine = parseCSVLine(lines[0]);
@@ -59,7 +152,8 @@ function parseCSV(csvContent, filename = '') {
         // Line 2: blank
         // Line 3: Category,Item,Tons,Cost (MCr)
         // Line 4+: data rows
-        dataStartIndex = 4; // Skip to data rows
+        const categoryRow = findCategoryRow(lines, 1);
+        dataStartIndex = categoryRow === -1 ? 4 : categoryRow + 1; // Skip to data rows
 
         // Extract total tonnage and cost from Hull line (line 1)
         if (lines.length > 1) {
@@ -80,6 +174,16 @@ function parseCSV(csvContent, filename = '') {
                 }
             }
         }
+    }
+
+    // Current design format: name, configuration, tonnage, ...
+    const designLine = isSmallCraftFormat ? null : parseDesignLine(firstLine);
+    if (designLine) {
+        shipName = designLine.shipName;
+        configurationText = designLine.configurationText;
+        hullTons = designLine.tons;
+        const categoryRow = findCategoryRow(lines, 1);
+        dataStartIndex = categoryRow === -1 ? 1 : categoryRow + 1;
     }
 
     // If no ship name from CSV, use filename (without extension)
@@ -115,8 +219,9 @@ function parseCSV(csvContent, filename = '') {
         // Check if this is the total line
         // For small craft format, skip TOTALS lines since we got totals from Hull line
         if ((category.toLowerCase() === 'total' || category.toLowerCase() === 'totals') && !isSmallCraftFormat) {
-            totalTons = tons;
-            totalCost = cost;
+            totalTons = hullTons || tons;
+            // Designs may split totals over several rows; a row without a cost keeps the last one
+            if (!designLine || cost) totalCost = cost;
         } else if (category.toLowerCase() !== 'total' && category.toLowerCase() !== 'totals') {
             // Parse quantity from item name: "Staterooms x10" or "Staterooms (x140)"
             let quantity = 1;
@@ -144,13 +249,14 @@ function parseCSV(csvContent, filename = '') {
 
     return {
         components,
-        totalTons,
+        totalTons: totalTons || hullTons,
         totalCost,
-        shipName
+        shipName,
+        configuration: parseConfiguration(configurationText)
     };
 }
 
 // CommonJS export for Jest (no-op in browsers where `module` is undefined)
 if (typeof module !== 'undefined') {
-    module.exports = { parseCSVLine, parseCSV };
+    module.exports = { parseCSVLine, parseConfiguration, parseDesignLine, parseCSV };
 }

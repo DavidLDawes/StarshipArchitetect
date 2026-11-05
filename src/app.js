@@ -17,6 +17,7 @@ let shipData = {
     totalTons: 0,
     totalCost: 0,
     components: [],
+    configuration: { general: 'standard', shape: 'rectangular', text: '' }, // From the design file (csv-parser.js)
     armorTons: 0,           // Total armor tonnage
     armorThickness: 0,      // Armor thickness in meters (calculated per floor)
     numFloors: 4,
@@ -388,6 +389,7 @@ function loadCsvFromString(csvString, source = 'unknown', filename = '') {
         shipData.shipName = parsed.shipName || '';
         shipData.totalTons = parsed.totalTons;
         shipData.totalCost = parsed.totalCost;
+        shipData.configuration = parsed.configuration;
         shipData.components = filteredComponents;
         shipData.armorTons = armorTons;
         shipData.componentPlacements = {}; // Reset placements

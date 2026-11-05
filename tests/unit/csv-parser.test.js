@@ -1,6 +1,8 @@
 'use strict';
 
-const { parseCSVLine, parseCSV } = require('../../src/csv-parser');
+const fs = require('fs');
+const path = require('path');
+const { parseCSVLine, parseConfiguration, parseDesignLine, parseCSV } = require('../../src/csv-parser');
 
 // ============================================================
 // parseCSVLine
@@ -370,5 +372,202 @@ describe('parseCSV', () => {
     expect(result).toHaveProperty('totalTons');
     expect(result).toHaveProperty('totalCost');
     expect(result).toHaveProperty('shipName');
+  });
+});
+
+// ============================================================
+// parseConfiguration
+// ============================================================
+
+describe('parseConfiguration', () => {
+  test.each([
+    ['Standard rectangular configuration', 'standard', 'rectangular'],
+    ['Standard rectangle configuration', 'standard', 'rectangular'],
+    ['Standard wedge configuration', 'standard', 'wedge'],
+    ['Standard cone configuration', 'standard', 'cone'],
+    ['Standard Sphere configuration', 'standard', 'sphere'],
+    ['Standard cylinder configuration', 'standard', 'cylinder'],
+    ['Streamlined Wing configuration', 'streamlined', 'wing'],
+    ['Streamlined Disk configuration', 'streamlined', 'disk'],
+    ['Streamlined disc configuration', 'streamlined', 'disk'],
+    ['Streamlined Lifting Body configuration', 'streamlined', 'lifting-body'],
+    ['streamlined lifting-body configuration', 'streamlined', 'lifting-body'],
+    ['Distributed configuration', 'distributed', 'distributed'],
+  ])('%s', (text, general, shape) => {
+    expect(parseConfiguration(text)).toEqual({ general, shape, text });
+  });
+
+  test('a general class alone gets that class default', () => {
+    expect(parseConfiguration('Standard configuration').shape).toBe('rectangular');
+    expect(parseConfiguration('Streamlined configuration').shape).toBe('lifting-body');
+    expect(parseConfiguration('Distributed').shape).toBe('distributed');
+  });
+
+  test('no configuration is standard rectangular', () => {
+    expect(parseConfiguration()).toEqual({ general: 'standard', shape: 'rectangular', text: '' });
+    expect(parseConfiguration('   ')).toEqual({ general: 'standard', shape: 'rectangular', text: '' });
+  });
+
+  test('unknown text is standard rectangular but keeps the original text', () => {
+    expect(parseConfiguration('Banana configuration'))
+      .toEqual({ general: 'standard', shape: 'rectangular', text: 'Banana configuration' });
+  });
+
+  test('an unknown shape falls back to the class default', () => {
+    expect(parseConfiguration('Streamlined banana configuration').shape).toBe('lifting-body');
+  });
+
+  test('a shape named under the wrong class keeps the shape and reports its real class', () => {
+    expect(parseConfiguration('Streamlined cone configuration'))
+      .toMatchObject({ general: 'standard', shape: 'cone' });
+  });
+});
+
+// ============================================================
+// parseDesignLine
+// ============================================================
+
+describe('parseDesignLine', () => {
+  const read = line => parseDesignLine(parseCSVLine(line));
+
+  test('reads name, configuration, and tonnage, ignoring later fields', () => {
+    expect(read('Courier, Streamlined Lifting Body configuration, 300 tons, Tech Level G')).toEqual({
+      shipName: 'Courier',
+      configurationText: 'Streamlined Lifting Body configuration',
+      tons: 300,
+    });
+  });
+
+  test('older first lines are not design lines', () => {
+    expect(read('Category,Item,Tons,Cost')).toBeNull();
+    expect(read('Name,Heavy Fighter')).toBeNull();
+    expect(read('Item,Tons,Cost')).toBeNull();
+  });
+
+  test('a line with tonnage but no configuration is still a design line', () => {
+    expect(read('Courier, 300 tons')).toEqual({ shipName: 'Courier', configurationText: '', tons: 300 });
+  });
+
+  test('a configuration without tonnage reports 0 tons', () => {
+    expect(read('Courier, Standard cone configuration').tons).toBe(0);
+  });
+
+  test('accepts thousands separators, quoted or not', () => {
+    expect(read('Liner, Standard sphere configuration, "12,500 tons"').tons).toBe(12500);
+    expect(read('Liner, Standard sphere configuration, 12,500 tons, Tech Level F').tons).toBe(12500);
+  });
+
+  test('accepts fractional tonnage', () => {
+    expect(read('Pod, Standard cone configuration, 12.5 tons').tons).toBe(12.5);
+  });
+
+  test('keeps commas in the ship name, quoted or not', () => {
+    expect(read('"Trader, Far", Standard cone configuration, 200 tons').shipName).toBe('Trader, Far');
+    expect(read('Trader, Far, Standard cone configuration, 200 tons').shipName).toBe('Trader, Far');
+  });
+});
+
+// ============================================================
+// parseCSV: current design format
+// ============================================================
+
+describe('parseCSV current design format', () => {
+  const courier = fs.readFileSync(path.join(__dirname, '../../data/Courier.csv'), 'utf8');
+
+  test('reads the sample design', () => {
+    const result = parseCSV(courier);
+    expect(result.shipName).toBe('Courier');
+    expect(result.totalTons).toBe(300);
+    expect(result.totalCost).toBeCloseTo(296.49);
+    expect(result.configuration).toEqual({
+      general: 'streamlined',
+      shape: 'lifting-body',
+      text: 'Streamlined Lifting Body configuration',
+    });
+  });
+
+  test('the Category row is not treated as a component', () => {
+    const result = parseCSV(courier);
+    expect(result.components.some(c => c.category === 'Category')).toBe(false);
+    expect(result.components[0]).toMatchObject({ category: 'Hull', item: '300 tons (streamlined)', tons: 0 });
+    expect(result.components).toHaveLength(30);
+  });
+
+  test('the ship name on the line beats the filename', () => {
+    expect(parseCSV(courier, 'other_name.csv').shipName).toBe('Courier');
+  });
+
+  test('categories carry down and quantities are read', () => {
+    const rooms = parseCSV(courier).components.find(c => c.itemName === 'Staterooms');
+    expect(rooms).toMatchObject({ category: 'Berths', quantity: 12, tons: 48, tonsPerItem: 4 });
+  });
+
+  test('the design line tonnage beats the Total row, which still gives the cost', () => {
+    const csv = 'Scout, Standard cone configuration, 100 tons\nCategory,Item,Mass,Cost\n' +
+      'Fuel,Tank,90,1\nTotal,,90,55.5';
+    const result = parseCSV(csv);
+    expect(result.totalTons).toBe(100);
+    expect(result.totalCost).toBe(55.5);
+  });
+
+  test('the Total row gives the tonnage when the design line has none', () => {
+    const csv = 'Scout, Standard cone configuration\nCategory,Item,Mass,Cost\nFuel,Tank,90,1\nTotal,,90,55.5';
+    expect(parseCSV(csv).totalTons).toBe(90);
+  });
+
+  test('tonnage is kept when there is no Total row', () => {
+    const csv = 'Scout, Standard cone configuration, 100 tons\nCategory,Item,Mass,Cost\nFuel,Tank,90,1';
+    expect(parseCSV(csv).totalTons).toBe(100);
+  });
+
+  test('a totals row with no cost does not erase the cost', () => {
+    const csv = 'Scout, Standard cone configuration, 100 tons\nCategory,Item,Mass,Cost\nFuel,Tank,90,1\n' +
+      'Total,,,55.5\nTotal,Total Mass,90,';
+    expect(parseCSV(csv).totalCost).toBe(55.5);
+  });
+
+  test('handles Windows line endings', () => {
+    const result = parseCSV(courier.replace(/\n/g, '\r\n'));
+    expect(result.shipName).toBe('Courier');
+    expect(result.configuration.shape).toBe('lifting-body');
+    expect(result.components).toHaveLength(30);
+  });
+});
+
+// ============================================================
+// parseCSV: older formats load as standard rectangular
+// ============================================================
+
+describe('parseCSV older formats', () => {
+  const rectangular = { general: 'standard', shape: 'rectangular', text: '' };
+  const load = name => parseCSV(fs.readFileSync(path.join(__dirname, '../../data', name), 'utf8'), name);
+
+  test('Category header format', () => {
+    const result = load('sample-ship.csv');
+    expect(result.configuration).toEqual(rectangular);
+    expect(result.shipName).toBe('sample ship');
+    expect(result.totalTons).toBe(1000);
+    expect(result.totalCost).toBeCloseTo(366.1);
+  });
+
+  test('Name, format', () => {
+    const result = load('Heavy_Fighter.csv');
+    expect(result.configuration).toEqual(rectangular);
+    expect(result.shipName).toBe('Heavy Fighter');
+    expect(result.totalTons).toBe(90);
+    expect(result.totalCost).toBeCloseTo(98.1);
+  });
+
+  test('Name, format finds its Category row even with no blank line before it', () => {
+    const csv = 'Name,Scout\nHull,100 tons,20 MCr\nCategory,Item,Tons,Cost\nFuel,Tank,10,1';
+    const result = parseCSV(csv);
+    expect(result.components).toHaveLength(1);
+    expect(result.components[0].item).toBe('Tank');
+  });
+
+  test('Mass column header', () => {
+    const result = load('transport.csv');
+    expect(result.configuration).toEqual(rectangular);
+    expect(result.totalTons).toBe(5000);
   });
 });
