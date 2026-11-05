@@ -12,7 +12,9 @@
  *
  * Dependencies (globals in the browser, required in Jest via jest-setup):
  * - placement-geometry.js (getPlacementRects, getPlacementCount)
- * - hull-access.js (getHullBounds, requiresHullAccess, touchesHull)
+ * - hull-access.js (getHullBounds, requiresHullAccess, getShapedInner, touchesFloorHull)
+ * - hull-shapes.js (HULL_BAND_STEP, isRectInConvexPolygon, resolveHullShape)
+ * - floor-utils.js (getFloorGeometry)
  */
 
 // ========================================
@@ -20,7 +22,7 @@
 // ========================================
 
 const LAYOUT_FORMAT = 'starship-architect-layout';
-const LAYOUT_VERSION = 1;
+const LAYOUT_VERSION = 2;
 
 /** Tolerance (meters) for bounds and overlap checks */
 const LAYOUT_EPS = 1e-6;
@@ -128,6 +130,7 @@ function serializeLayout(ship, now = new Date()) {
             csv: ship.originalCsv || ''
         },
         floors: {
+            shape: ship.hullShape || 'rectangular',
             count: ship.numFloors,
             length: ship.floorLength,
             ceilingHeight: ship.ceilingHeight,
@@ -149,12 +152,33 @@ function serializeLayout(ship, now = new Date()) {
 const isNum = v => typeof v === 'number' && isFinite(v);
 
 /**
- * Upgrade older layouts to the current version (none yet; version 1 is first)
+ * Upgrade older layouts to the current version.
+ * Version 1 didn't record a hull shape, and its rooms were laid out on rectangular
+ * floors, so it stays rectangular even if its design file now names a shape.
  * @param {object} layout
  * @returns {object}
  */
 function migrateLayout(layout) {
-    return layout;
+    if (layout.version >= 2) return layout;
+    const floors = layout.floors && typeof layout.floors === 'object'
+        ? { ...layout.floors, shape: 'rectangular' }
+        : layout.floors;
+    return { ...layout, version: 2, floors };
+}
+
+/**
+ * Hull shape a layout should open with
+ * @param {object} layout - Parsed layout
+ * @returns {{shape: string, problem: string|null}} A shape that can be built, and a
+ *   message for the user if that isn't the one the file asks for
+ */
+function getLayoutHullShape(layout) {
+    const saved = layout.floors.shape;
+    const shape = resolveHullShape(saved);
+    return {
+        shape,
+        problem: shape === saved ? null : `The layout asks for a "${saved}" hull, which isn't available, so it opened as ${shape}.`
+    };
 }
 
 /**
@@ -234,6 +258,35 @@ const rectsOverlap = (a, b) =>
     a.y + a.width > b.y + LAYOUT_EPS && b.y + b.width > a.y + LAYOUT_EPS;
 
 /**
+ * Whether an entry's rectangles are inside the usable space of its floor.
+ * Free regions on a curved or sloping floor are built from bands that can poke
+ * past the wall by up to half a band, which is less than HULL_BAND_STEP.
+ */
+function entryFitsFloor(entry, rects, bounds) {
+    const inner = getShapedInner(entry.floor);
+    if (!inner) {
+        return rects.every(r => r.x >= bounds.x0 - LAYOUT_EPS && r.y >= bounds.y0 - LAYOUT_EPS &&
+            r.x + r.length <= bounds.x1 + LAYOUT_EPS && r.y + r.width <= bounds.y1 + LAYOUT_EPS);
+    }
+    const isBanded = entry.rects && !getFloorGeometry(entry.floor).isRectangle;
+    const slack = isBanded ? HULL_BAND_STEP : LAYOUT_EPS;
+    return rects.every(r => isRectInConvexPolygon(inner, r.x, r.y, r.length, r.width, slack));
+}
+
+/**
+ * Whether a hull component's entry is against the hull. A component spanning
+ * floors is saved as one entry per floor, and only has to touch on one of them.
+ */
+function entryTouchesHull(entry, savedEntries, floor) {
+    const armor = floor.armorThickness || 0;
+    const spanned = savedEntries.map(cleanEntry).filter(other => other &&
+        other.floor >= 1 && other.floor <= floor.count &&
+        Math.abs(other.x - entry.x) <= LAYOUT_EPS && Math.abs(other.y - entry.y) <= LAYOUT_EPS &&
+        Math.abs(other.length - entry.length) <= LAYOUT_EPS && Math.abs(other.width - entry.width) <= LAYOUT_EPS);
+    return spanned.some(e => touchesFloorHull(e.floor, e.x, e.y, e.length, e.width, floor.length, floor.width, armor));
+}
+
+/**
  * Restore a layout's placements onto a set of components.
  *
  * Components are matched by exact key, then by item text, then by item name
@@ -241,6 +294,7 @@ const rectsOverlap = (a, b) =>
  * malformed, on a floor that doesn't exist, outside the usable area, off the
  * hull for a hull component, overlapping something already restored, or hold
  * more items than the component now has (a block is trimmed to what is left).
+ * Set shipData.hullShape first: fit and hull checks follow the current ship's shape.
  *
  * @param {object} layout - Parsed layout
  * @param {Array<object>} components - Current components
@@ -320,14 +374,12 @@ function restorePlacements(layout, components, floor) {
             }
 
             const rects = getPlacementRects(entry);
-            const inside = rects.every(r => r.x >= bounds.x0 - LAYOUT_EPS && r.y >= bounds.y0 - LAYOUT_EPS &&
-                r.x + r.length <= bounds.x1 + LAYOUT_EPS && r.y + r.width <= bounds.y1 + LAYOUT_EPS);
-            if (!inside) {
+            if (!entryFitsFloor(entry, rects, bounds)) {
                 problems.push(`${where} (floor ${entry.floor}) no longer fits inside the hull and armor.`);
                 dropped++;
                 return;
             }
-            if (hull && !touchesHull(entry.x, entry.y, entry.length, entry.width, floor.length, floor.width, floor.armorThickness || 0)) {
+            if (hull && !entryTouchesHull(entry, entries, floor)) {
                 problems.push(`${where} (floor ${entry.floor}) no longer touches the outer hull.`);
                 dropped++;
                 return;
@@ -392,6 +444,7 @@ if (typeof module !== 'undefined') {
         serializeLayout,
         parseLayout,
         migrateLayout,
+        getLayoutHullShape,
         sameDesignCsv,
         restorePlacements,
         compareFloorGeometry

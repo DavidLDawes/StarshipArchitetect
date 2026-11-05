@@ -388,3 +388,243 @@ describe('exportLayoutSvg on shaped hulls', () => {
     expect(withGeometry).toContain('<rect class="hull"');
   });
 });
+
+// ============================================================
+// Hull shapes in layouts
+// ============================================================
+
+describe('layouts on shaped hulls', () => {
+  const {
+    getLayoutHullShape,
+    migrateLayout,
+    restorePlacements,
+    serializeLayout,
+    parseLayout,
+    LAYOUT_VERSION
+  } = require('../../src/layout-io');
+  const { recalculateFloors, getCurrentFloorDimensions, getShipGeometry } = require('../../src/floor-utils');
+  const { getShapedInner, planFloorExposedFill, snapToFloorHull, touchesFloorHull } = require('../../src/hull-access');
+  const { analyzeFloorFreeSpace, planFloorFill } = require('../../src/placement-geometry');
+  const { getRectFitRegion, isRectInConvexPolygon } = require('../../src/hull-shapes');
+
+  const SHAPES = ['wedge', 'cone', 'sphere', 'cylinder', 'wing', 'disk', 'lifting-body'];
+  const room = { category: 'Berths', item: 'Staterooms', itemName: 'Staterooms', quantity: 200, tons: 800, tonsPerItem: 4 };
+  const turret = { category: 'Weapons', item: 'Triple Turret', itemName: 'Triple Turret', quantity: 40, tons: 40, tonsPerItem: 1 };
+
+  function setShip(shape, armorTons = 40) {
+    Object.assign(global.shipData, {
+      hullShape: shape,
+      totalTons: 1000,
+      numFloors: 5,
+      armorTons,
+      ceilingHeight: 2.5,
+      floorLength: 30,
+      components: [room, turret],
+      componentPlacements: {},
+      originalCsv: 'x',
+      shipName: 'Test'
+    });
+    recalculateFloors({ resetLength: true });
+    const { floorLength, floorWidth } = getCurrentFloorDimensions();
+    return { count: 5, length: floorLength, width: floorWidth, armorThickness: global.shipData.armorThickness };
+  }
+
+  const makeLayout = entries => ({
+    placements: Object.entries(entries).map(([i, list]) => ({
+      component: i === '0' ? 'Berths|Staterooms|0' : 'Weapons|Triple Turret|0',
+      item: i === '0' ? room.item : turret.item,
+      entries: list
+    }))
+  });
+
+  afterAll(() => {
+    Object.assign(global.shipData, { totalTons: 1000, armorTons: 0, numFloors: 4, floorLength: 30, components: [], componentPlacements: {} });
+    delete global.shipData.hullShape;
+    recalculateFloors();
+  });
+
+  describe('format', () => {
+    test('saves the shape', () => {
+      const floor = setShip('disk');
+      const layout = serializeLayout({ ...global.shipData, floorWidth: floor.width });
+      expect(layout.version).toBe(2);
+      expect(layout.version).toBe(LAYOUT_VERSION);
+      expect(layout.floors.shape).toBe('disk');
+    });
+
+    test('a ship without a shape saves as rectangular', () => {
+      const layout = serializeLayout({ components: [], componentPlacements: {}, numFloors: 1, floorLength: 10, ceilingHeight: 2.5 });
+      expect(layout.floors.shape).toBe('rectangular');
+    });
+
+    test('version 1 becomes rectangular, even when its design names a shape', () => {
+      const csv = 'Courier, Streamlined Lifting Body configuration, 300 tons, Tech Level G';
+      const v1 = { format: 'starship-architect-layout', version: 1, ship: { csv }, floors: { count: 2, length: 10, ceilingHeight: 2.5 }, placements: [] };
+      const layout = parseLayout(JSON.stringify(v1));
+      expect(layout.version).toBe(2);
+      expect(layout.floors.shape).toBe('rectangular');
+      expect(layout.floors.count).toBe(2);
+      expect(v1.version).toBe(1);
+    });
+
+    test('migration leaves a damaged file for validation to report', () => {
+      const v1 = { format: 'starship-architect-layout', version: 1, ship: { csv: 'x' }, placements: [] };
+      expect(migrateLayout(v1).floors).toBeUndefined();
+      expect(() => parseLayout(JSON.stringify(v1))).toThrow(/invalid floor settings/);
+    });
+
+    test('version 2 is left alone', () => {
+      const v2 = { version: 2, floors: { shape: 'cone' } };
+      expect(migrateLayout(v2)).toBe(v2);
+    });
+
+    test.each(SHAPES.concat('rectangular'))('%s opens as itself', shape => {
+      expect(getLayoutHullShape({ floors: { shape } })).toEqual({ shape, problem: null });
+    });
+
+    test.each([['distributed'], ['nonsense'], [undefined], [7]])('%s opens as rectangular and says so', shape => {
+      const result = getLayoutHullShape({ floors: { shape } });
+      expect(result.shape).toBe('rectangular');
+      expect(result.problem).toMatch(/isn't available/);
+    });
+  });
+
+  describe.each(SHAPES)('restoring on a %s hull', shape => {
+    test('rooms, weapons and regions all come back', () => {
+      const floor = setShip(shape);
+      const placements = {};
+      const inner = getShapedInner(2);
+
+      // A ring of weapons on the wall
+      const { length, width, armorThickness } = floor;
+      const ring = planFloorExposedFill(2, [], 1.5, 1.5, 12, length, width, armorThickness);
+      expect(ring.length).toBeGreaterThan(0);
+      placements[1] = { floors: ring.map(a => ({ floor: 2, ...a.bbox, ...(a.count > 1 ? { count: a.count } : {}) })) };
+      global.shipData.componentPlacements = placements;
+
+      // Free space filled as a region, on the same deck
+      const analysis = analyzeFloorFreeSpace(2, length, width, armorThickness);
+      const plan = planFloorFill(analysis.regions, 22.4, 3);
+      placements[0] = { floors: plan.map(a => ({ floor: 2, ...a.bbox, count: a.count, rects: a.rects })) };
+
+      // A plain room on another deck
+      const box = getShipGeometry().floors[2].bounds;
+      placements[0].floors.push({ floor: 3, x: box.x + box.length / 2, y: box.y + box.width / 2, length: 1, width: 1 });
+
+      const layout = parseLayout(JSON.stringify({
+        ...serializeLayout({ ...global.shipData, floorWidth: width }),
+        ship: { csv: 'x' }
+      }));
+      const result = restorePlacements(layout, global.shipData.components, floor);
+
+      expect(result.problems).toEqual([]);
+      expect(result.dropped).toBe(0);
+      expect(result.placements[1].floors).toEqual(placements[1].floors);
+      expect(result.placements[0].floors).toEqual(placements[0].floors);
+      expect(isRectInConvexPolygon(inner, ring[0].bbox.x, ring[0].bbox.y, ring[0].bbox.length, ring[0].bbox.width)).toBe(true);
+    });
+
+    test('a room that no longer fits this deck is reported', () => {
+      const floor = setShip(shape);
+      const huge = Math.max(floor.length, floor.width) + 1;
+      const result = restorePlacements(makeLayout({ 0: [{ floor: 1, x: 0, y: 0, length: huge, width: 1 }] }), [room, turret], floor);
+      expect(result.restored).toBe(0);
+      expect(result.problems[0]).toMatch(/no longer fits/);
+    });
+
+    test('a weapon away from the wall is reported', () => {
+      const floor = setShip(shape);
+      const box = getShipGeometry().floors[1].bounds;
+      const x = box.x + box.length / 2 - 0.5;
+      const y = box.y + box.width / 2 - 0.5;
+      const result = restorePlacements(makeLayout({ 1: [{ floor: 2, x, y, length: 1, width: 1 }] }), [room, turret], floor);
+      expect(result.restored).toBe(0);
+      expect(result.problems[0]).toMatch(/no longer touches/);
+    });
+  });
+
+  describe('curved decks', () => {
+    test('a room past the wall is dropped, where a rectangular check would keep it', () => {
+      const floor = setShip('disk', 0);
+      const entry = { floor: 1, x: 0, y: 0, length: 2, width: 2 };
+      const result = restorePlacements(makeLayout({ 0: [entry] }), [room, turret], floor);
+      expect(result.restored).toBe(0);
+      expect(result.problems[0]).toMatch(/no longer fits/);
+
+      const rectangular = setShip('rectangular', 0);
+      expect(restorePlacements(makeLayout({ 0: [entry] }), [room, turret], rectangular).restored).toBe(1);
+    });
+
+    // A 2 m room whose top left corner is this far past the wall of a disk deck
+    function roomPastWall(floor, past) {
+      const radius = floor.length / 2;
+      const offset = radius - (radius + past) * Math.SQRT1_2;
+      return { floor: 1, x: offset, y: offset, length: 2, width: 2 };
+    }
+    const asRegion = e => ({ ...e, count: 1, rects: [{ x: e.x, y: e.y, length: e.length, width: e.width }] });
+
+    test('a region may poke past the wall by part of a band, but no further', () => {
+      const floor = setShip('disk', 0);
+      const near = asRegion(roomPastWall(floor, 0.3));
+      expect(isRectInConvexPolygon(getShapedInner(1), near.x, near.y, 2, 2)).toBe(false);
+      expect(restorePlacements(makeLayout({ 0: [near] }), [room, turret], floor).restored).toBe(1);
+
+      const far = asRegion(roomPastWall(floor, 0.7));
+      expect(restorePlacements(makeLayout({ 0: [far] }), [room, turret], floor).restored).toBe(0);
+    });
+
+    test('a plain room gets no such allowance', () => {
+      const floor = setShip('disk', 0);
+      const near = roomPastWall(floor, 0.3);
+      expect(restorePlacements(makeLayout({ 0: [near] }), [room, turret], floor).restored).toBe(0);
+    });
+
+    test('real regions on a curved deck stay within that allowance', () => {
+      for (const shape of ['cone', 'sphere', 'wing', 'disk', 'lifting-body']) {
+        const floor = setShip(shape);
+        for (let f = 1; f <= 5; f++) {
+          const inner = getShapedInner(f);
+          const { regions } = analyzeFloorFreeSpace(f, floor.length, floor.width, floor.armorThickness);
+          for (const r of regions.flatMap(region => region.rects)) {
+            expect(isRectInConvexPolygon(inner, r.x, r.y, r.length, r.width, 0.5)).toBe(true);
+          }
+        }
+      }
+    });
+
+    test('a weapon spanning floors only has to touch the hull on one of them', () => {
+      const floor = setShip('cone');
+      const { length: L, width: W, armorThickness: a } = floor;
+      const floors = [1, 2];
+      expect(getRectFitRegion(getShapedInner(floors), 2, 2).length).toBeGreaterThan(0);
+      const p = snapToFloorHull(floors, 0, 0, 2, 2, L, W, a);
+      const entries = floors.map(f => ({ floor: f, x: p.x, y: p.y, length: 2, width: 2 }));
+      expect(touchesFloorHull(1, p.x, p.y, 2, 2, L, W, a)).toBe(false);
+      expect(touchesFloorHull(2, p.x, p.y, 2, 2, L, W, a)).toBe(true);
+
+      const result = restorePlacements(makeLayout({ 1: entries }), [room, turret], floor);
+      expect(result.problems).toEqual([]);
+      expect(result.restored).toBe(2);
+    });
+
+    test('that allowance needs a real entry on the floor that touches', () => {
+      const floor = setShip('cone');
+      const { length: L, width: W, armorThickness: a } = floor;
+      const p = snapToFloorHull([1, 2], 0, 0, 2, 2, L, W, a);
+      const onlyInside = [{ floor: 1, x: p.x, y: p.y, length: 2, width: 2 }];
+      const result = restorePlacements(makeLayout({ 1: onlyInside }), [room, turret], floor);
+      expect(result.restored).toBe(0);
+    });
+
+    test('a deck the armor used up holds nothing', () => {
+      Object.assign(global.shipData, { hullShape: 'cone', totalTons: 90, numFloors: 4, armorTons: 90, ceilingHeight: 2.5, floorLength: 30 });
+      recalculateFloors({ resetLength: true });
+      const { floorLength, floorWidth } = getCurrentFloorDimensions();
+      const floor = { count: 4, length: floorLength, width: floorWidth, armorThickness: global.shipData.armorThickness };
+      expect(getShapedInner(4)).toEqual([]);
+      const result = restorePlacements(makeLayout({ 0: [{ floor: 4, x: 1, y: 1, length: 1, width: 1 }] }), [room, turret], floor);
+      expect(result.restored).toBe(0);
+      expect(result.problems[0]).toMatch(/no longer fits/);
+    });
+  });
+});
