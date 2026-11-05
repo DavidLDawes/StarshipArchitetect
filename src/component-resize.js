@@ -90,11 +90,11 @@ function getCursorForEdge(edge) {
  * @param {number} originalLength - Original component length
  * @param {number} originalWidth - Original component width
  * @param {number} componentArea - Component area (must remain constant)
- * @param {number} floorLength - Floor length for bounds checking
- * @param {number} floorWidth - Floor width for bounds checking
+ * @param {Object} bounds - Usable area {x0, y0, x1, y1}, inside the armor
  * @returns {Object} {length, width, x, y} - New dimensions and position
  */
-function calculateNewDimensions(edge, deltaMeters, originalLength, originalWidth, componentArea, originalX, originalY, floorLength, floorWidth) {
+function calculateNewDimensions(edge, deltaMeters, originalLength, originalWidth, componentArea, originalX, originalY, bounds) {
+    const { x0, y0, x1, y1 } = bounds;
     let newLength = originalLength;
     let newWidth = originalWidth;
     let newX = originalX;
@@ -106,13 +106,13 @@ function calculateNewDimensions(edge, deltaMeters, originalLength, originalWidth
     if (edge === 'right') {
         // Horizontal resize: change length, adjust width to maintain area
         newLength = originalLength + deltaMeters;
-        newLength = Math.max(MIN_DIM, Math.min(newLength, floorLength - originalX));
+        newLength = Math.max(MIN_DIM, Math.min(newLength, x1 - originalX));
         newWidth = componentArea / newLength;
 
         // Check if width would fit
-        if (newY + newWidth > floorWidth) {
+        if (newY + newWidth > y1) {
             // Constrain by width
-            newWidth = floorWidth - newY;
+            newWidth = y1 - newY;
             newLength = componentArea / newWidth;
         }
     } else if (edge === 'left') {
@@ -122,29 +122,29 @@ function calculateNewDimensions(edge, deltaMeters, originalLength, originalWidth
 
         // Calculate new X position
         newX = originalX + deltaMeters;
-        newX = Math.max(0, Math.min(newX, originalX + originalLength - MIN_DIM));
+        newX = Math.max(x0, Math.min(newX, originalX + originalLength - MIN_DIM));
 
         // Recalculate length based on actual X change
         newLength = (originalX + originalLength) - newX;
         newWidth = componentArea / newLength;
 
         // Check if width would fit
-        if (newY + newWidth > floorWidth) {
+        if (newY + newWidth > y1) {
             // Constrain by width
-            newWidth = floorWidth - newY;
+            newWidth = y1 - newY;
             newLength = componentArea / newWidth;
             newX = (originalX + originalLength) - newLength;
         }
     } else if (edge === 'bottom') {
         // Vertical resize: change width, adjust length to maintain area
         newWidth = originalWidth + deltaMeters;
-        newWidth = Math.max(MIN_DIM, Math.min(newWidth, floorWidth - originalY));
+        newWidth = Math.max(MIN_DIM, Math.min(newWidth, y1 - originalY));
         newLength = componentArea / newWidth;
 
         // Check if length would fit
-        if (newX + newLength > floorLength) {
+        if (newX + newLength > x1) {
             // Constrain by length
-            newLength = floorLength - newX;
+            newLength = x1 - newX;
             newWidth = componentArea / newLength;
         }
     } else if (edge === 'top') {
@@ -154,24 +154,24 @@ function calculateNewDimensions(edge, deltaMeters, originalLength, originalWidth
 
         // Calculate new Y position
         newY = originalY + deltaMeters;
-        newY = Math.max(0, Math.min(newY, originalY + originalWidth - MIN_DIM));
+        newY = Math.max(y0, Math.min(newY, originalY + originalWidth - MIN_DIM));
 
         // Recalculate width based on actual Y change
         newWidth = (originalY + originalWidth) - newY;
         newLength = componentArea / newWidth;
 
         // Check if length would fit
-        if (newX + newLength > floorLength) {
+        if (newX + newLength > x1) {
             // Constrain by length
-            newLength = floorLength - newX;
+            newLength = x1 - newX;
             newWidth = componentArea / newLength;
             newY = (originalY + originalWidth) - newWidth;
         }
     }
 
     // Final bounds check
-    newLength = Math.max(MIN_DIM, Math.min(newLength, floorLength - newX));
-    newWidth = Math.max(MIN_DIM, Math.min(newWidth, floorWidth - newY));
+    newLength = Math.max(MIN_DIM, Math.min(newLength, x1 - newX));
+    newWidth = Math.max(MIN_DIM, Math.min(newWidth, y1 - newY));
 
     // Recalculate to maintain exact area
     if (edge === 'left' || edge === 'right') {
@@ -262,8 +262,7 @@ function updateResize(mouseX, mouseY, canvas) {
         resizeState.componentArea,
         resizeState.originalX,
         resizeState.originalY,
-        floorLength,
-        floorWidth
+        getFloorUsableBounds(resizeState.floorIndex, floorLength, floorWidth, shipData.armorThickness || 0)
     );
 
     // Update current state
@@ -282,15 +281,19 @@ function updateResize(mouseX, mouseY, canvas) {
 }
 
 /**
- * Whether the resized rectangle still satisfies the hull rule: weapons,
- * vehicles, and launch bays must keep touching the outer hull
+ * Whether a resized rectangle is allowed where it is: inside the usable space,
+ * clear of other components, and for weapons, vehicles, and launch bays still
+ * touching the outer hull
  * @returns {boolean}
  */
-function resizeKeepsHullAccess(x = resizeState.currentX, y = resizeState.currentY) {
-    if (!requiresHullAccess(shipData.components[resizeState.componentIndex])) return true;
+function isResizeValid(x, y, length, width) {
     const { floorLength, floorWidth } = getCurrentFloorDimensions();
-    return touchesHull(x, y, resizeState.currentLength, resizeState.currentWidth,
-        floorLength, floorWidth, shipData.armorThickness || 0);
+    const armor = shipData.armorThickness || 0;
+    const floor = resizeState.floorIndex;
+    if (!fitsFloor(floor, x, y, length, width, floorLength, floorWidth, armor)) return false;
+    if (checkOverlap(floor, x, y, length, width, resizeState.componentIndex)) return false;
+    return !requiresHullAccess(shipData.components[resizeState.componentIndex]) ||
+        touchesFloorHull(floor, x, y, length, width, floorLength, floorWidth, armor);
 }
 
 /**
@@ -302,17 +305,7 @@ function commitResize() {
 
     const { floorLength, floorWidth } = getCurrentFloorDimensions();
 
-    // Check for overlap at new position/dimensions (excluding self)
-    const hasOverlap = checkOverlap(
-        resizeState.floorIndex,
-        resizeState.currentX,
-        resizeState.currentY,
-        resizeState.currentLength,
-        resizeState.currentWidth,
-        resizeState.componentIndex
-    );
-
-    if (hasOverlap || !resizeKeepsHullAccess()) {
+    if (!isResizeValid(resizeState.currentX, resizeState.currentY, resizeState.currentLength, resizeState.currentWidth)) {
         // Show error feedback
         const canvas = document.getElementById(`floor-canvas-${resizeState.floorIndex}`);
         if (canvas) {
@@ -329,19 +322,31 @@ function commitResize() {
     const placement = shipData.componentPlacements[resizeState.componentIndex];
     if (placement && placement.floors && placement.floors[resizeState.placementIndex]) {
         const pos = placement.floors[resizeState.placementIndex];
-        pos.x = Math.round(resizeState.currentX * 10) / 10; // Round to 0.1m
-        pos.y = Math.round(resizeState.currentY * 10) / 10;
-        pos.length = Math.round(resizeState.currentLength * 10) / 10;
-        pos.width = Math.round(resizeState.currentWidth * 10) / 10;
+        const rounded = {
+            x: Math.round(resizeState.currentX * 10) / 10, // Round to 0.1m
+            y: Math.round(resizeState.currentY * 10) / 10,
+            length: Math.round(resizeState.currentLength * 10) / 10,
+            width: Math.round(resizeState.currentWidth * 10) / 10
+        };
 
         // Rounding can nudge a hull component up to 5 cm off the hull; put it back
-        if (requiresHullAccess(shipData.components[resizeState.componentIndex])) {
-            const armor = shipData.armorThickness || 0;
-            if (!touchesHull(pos.x, pos.y, pos.length, pos.width, floorLength, floorWidth, armor)) {
-                const snapped = snapToHullEdge(pos.x, pos.y, pos.length, pos.width, floorLength, floorWidth, armor);
-                pos.x = snapped.x;
-                pos.y = snapped.y;
-            }
+        const armor = shipData.armorThickness || 0;
+        if (requiresHullAccess(shipData.components[resizeState.componentIndex]) &&
+            !touchesFloorHull(resizeState.floorIndex, rounded.x, rounded.y, rounded.length, rounded.width, floorLength, floorWidth, armor)) {
+            Object.assign(rounded, snapToFloorHull(resizeState.floorIndex, rounded.x, rounded.y, rounded.length, rounded.width, floorLength, floorWidth, armor));
+        }
+
+        // Rounding can also push it into the armor or a neighbor; the exact size
+        // was checked above, so keep that instead
+        if (isResizeValid(rounded.x, rounded.y, rounded.length, rounded.width)) {
+            Object.assign(pos, rounded);
+        } else {
+            Object.assign(pos, {
+                x: resizeState.currentX,
+                y: resizeState.currentY,
+                length: resizeState.currentLength,
+                width: resizeState.currentWidth
+            });
         }
 
         const newArea = pos.length * pos.width;
@@ -452,14 +457,8 @@ function drawResizePreview(canvas, floorIndex, floorLength, floorWidth) {
     const pixelsPerMeter = canvas.width / floorLength;
 
     // Check if new dimensions would be valid
-    const isValid = !checkOverlap(
-        floorIndex,
-        resizeState.currentX,
-        resizeState.currentY,
-        resizeState.currentLength,
-        resizeState.currentWidth,
-        resizeState.componentIndex
-    ) && resizeKeepsHullAccess();
+    const isValid = isResizeValid(resizeState.currentX, resizeState.currentY,
+        resizeState.currentLength, resizeState.currentWidth);
 
     const px = resizeState.currentX * pixelsPerMeter;
     const py = resizeState.currentY * pixelsPerMeter;
@@ -674,4 +673,11 @@ function setupGlobalResizeHandlers() {
 }
 
 // Initialize global handlers
-setupGlobalResizeHandlers();
+if (typeof document !== 'undefined') {
+    setupGlobalResizeHandlers();
+}
+
+// CommonJS export for Jest (no-op in browsers where `module` is undefined)
+if (typeof module !== 'undefined') {
+    module.exports = { calculateNewDimensions };
+}

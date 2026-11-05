@@ -12,6 +12,7 @@
 let previewState = {
     isActive: false,
     floorIndex: null,
+    fitFloors: null, // Floors the component has to fit: the hovered floor, or all it spans
     x: null,
     y: null,
     length: null,
@@ -48,7 +49,8 @@ function drawPreview(canvas, floorIndex, length, width) {
 
     // Check if this position would be valid: within usable area (armor) and no overlap
     const armorThickness = shipData.armorThickness || 0;
-    const within = isWithinUsableArea(
+    const within = fitsFloor(
+        previewState.fitFloors,
         previewState.x,
         previewState.y,
         previewState.length,
@@ -58,16 +60,17 @@ function drawPreview(canvas, floorIndex, length, width) {
         armorThickness
     );
 
-    const noOverlap = !checkOverlap(
-        floorIndex,
+    const noOverlap = [].concat(previewState.fitFloors).every(f => !checkOverlap(
+        f,
         previewState.x,
         previewState.y,
         previewState.length,
         previewState.width,
         previewState.excludeComponentIndex
-    );
+    ));
 
-    const onHull = !previewState.requireHull || touchesHull(
+    const onHull = !previewState.requireHull || touchesFloorHull(
+        previewState.fitFloors,
         previewState.x,
         previewState.y,
         previewState.length,
@@ -119,6 +122,7 @@ function handleCanvasMouseMove(event, floorIndex) {
 
     // Get component dimensions for preview
     let compLength, compWidth, excludeIndex, componentIndex;
+    let fitFloors = floorIndex;
 
     if (uiState.isPlacingComponent) {
         // Placement mode
@@ -131,6 +135,7 @@ function handleCanvasMouseMove(event, floorIndex) {
         compWidth = data.width;
         excludeIndex = -1;
         componentIndex = data.componentIndex;
+        if (data.isMultiFloor) fitFloors = data.floors;
     } else if (uiState.selectedPlacement) {
         // Move mode (region shapes can't be moved, so no preview)
         const sel = uiState.selectedPlacement;
@@ -164,19 +169,15 @@ function handleCanvasMouseMove(event, floorIndex) {
     const mouseX = mousePxX / pixelsPerMeter;
     const mouseY = mousePxY / pixelsPerMeter;
 
-    // Calculate preview position (center component on mouse)
-    let previewX = mouseX - compLength / 2;
-    let previewY = mouseY - compWidth / 2;
-
-    // Clamp to usable area (respecting armor boundary)
+    // Center the preview on the mouse, keeping it inside the hull and armor
     const armorThickness = shipData.armorThickness || 0;
-    previewX = Math.max(armorThickness, Math.min(previewX, floorLength - compLength - armorThickness));
-    previewY = Math.max(armorThickness, Math.min(previewY, floorWidth - compWidth - armorThickness));
+    let { x: previewX, y: previewY } = clampToFloor(fitFloors, mouseX - compLength / 2, mouseY - compWidth / 2,
+        compLength, compWidth, floorLength, floorWidth, armorThickness);
 
-    // Hull components (weapons, vehicles, launch bays) follow the nearest hull side
+    // Hull components (weapons, vehicles, launch bays) follow the nearest part of the hull
     const requireHull = requiresHullAccess(shipData.components[componentIndex]);
     if (requireHull) {
-        ({ x: previewX, y: previewY } = snapToHullEdge(previewX, previewY, compLength, compWidth,
+        ({ x: previewX, y: previewY } = snapToFloorHull(fitFloors, previewX, previewY, compLength, compWidth,
             floorLength, floorWidth, armorThickness));
     }
 
@@ -186,6 +187,7 @@ function handleCanvasMouseMove(event, floorIndex) {
     // Update preview state
     previewState.isActive = true;
     previewState.floorIndex = floorIndex;
+    previewState.fitFloors = fitFloors;
     previewState.x = previewX;
     previewState.y = previewY;
     previewState.length = compLength;
@@ -233,6 +235,7 @@ function clearPreview() {
     }
     previewState.isActive = false;
     previewState.floorIndex = null;
+    previewState.fitFloors = null;
     previewState.x = null;
     previewState.y = null;
     previewState.length = null;

@@ -7,6 +7,7 @@ module.exports = {
     'src/csv-parser.js',
     'src/floor-utils.js',
     'src/component-dimensions.js',
+    'src/component-resize.js',
     'src/placement-logic.js',
     'src/placement-geometry.js',
     'src/hull-access.js',

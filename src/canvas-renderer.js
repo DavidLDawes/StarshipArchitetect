@@ -110,6 +110,19 @@ function tracePolygon(ctx, polygon, pixelsPerMeter) {
 }
 
 /**
+ * Keep what is drawn next inside a curved or sloping floor's usable space. Free
+ * regions are built from bands that can poke slightly past such a wall. Wrap this
+ * in ctx.save() and ctx.restore().
+ */
+function clipToFloorHull(ctx, floorIndex, pixelsPerMeter) {
+    const inner = getShapedInner(floorIndex);
+    if (!inner || inner.length === 0) return;
+    ctx.beginPath();
+    tracePolygon(ctx, inner, pixelsPerMeter);
+    ctx.clip();
+}
+
+/**
  * Small arrow at the canvas edge showing which way the ship points
  * @param {string} direction - 'left' or 'top'
  */
@@ -268,7 +281,10 @@ function drawFloorWithComponents(canvas, floorIndex, length, width, placements =
             if (pos.floor !== floorIndex) continue;
 
             if (pos.rects && pos.rects.length > 0) {
+                ctx.save();
+                clipToFloorHull(ctx, floorIndex, pixelsPerMeter);
                 drawPlacedShape(ctx, pos.rects, component, pixelsPerMeter, compIdx, count);
+                ctx.restore();
             } else {
                 // Use per-placement dimensions (fallback to component-level for backwards compatibility)
                 const pLength = pos.length || placement.length;

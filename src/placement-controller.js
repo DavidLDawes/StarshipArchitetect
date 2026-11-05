@@ -80,45 +80,26 @@ function placeComponentOnCanvas(event, floorIndex) {
     // Armor boundary
     const armorThickness = shipData.armorThickness || 0;
 
-    // Calculate initial position (center component on click)
-    let x = clickX - compLength / 2;
-    let y = clickY - compWidth / 2;
+    // A component spanning several floors has to fit all of them at the same spot
+    const fitFloors = data.isMultiFloor ? data.floors : floorIndex;
 
-    // Snap to edges (respecting armor boundary)
-    // Use half-size threshold so snapping is centered-based: snap when the click
-    // is within half the component dimension of the inner armor edge.
-    const halfLength = compLength / 2;
-    const halfWidth = compWidth / 2;
-
-    if (clickX <= armorThickness + halfLength) {
-        x = armorThickness;
-    } else if (clickX >= floorLength - armorThickness - halfLength) {
-        x = floorLength - compLength - armorThickness;
-    }
-
-    if (clickY <= armorThickness + halfWidth) {
-        y = armorThickness;
-    } else if (clickY >= floorWidth - armorThickness - halfWidth) {
-        y = floorWidth - compWidth - armorThickness;
-    }
-
-    // Ensure component fits within usable area (respecting armor boundary)
-    x = Math.max(armorThickness, Math.min(x, floorLength - compLength - armorThickness));
-    y = Math.max(armorThickness, Math.min(y, floorWidth - compWidth - armorThickness));
-
+    // Center the component on the click, keeping it inside the hull. This also
+    // puts it flush against a wall when the click is close to one.
     // Do not round here — allow placement at sub-meter precision
+    let { x, y } = clampToFloor(fitFloors, clickX - compLength / 2, clickY - compWidth / 2,
+        compLength, compWidth, floorLength, floorWidth, armorThickness);
 
     // Weapons, vehicles, and launch bays must sit against the outer hull:
-    // push the component onto the hull side nearest the click
+    // push the component onto the part of the hull nearest the click
     const requireHull = requiresHullAccess(shipData.components[data.componentIndex]);
     if (requireHull) {
-        ({ x, y } = snapToHullEdge(x, y, compLength, compWidth, floorLength, floorWidth, armorThickness));
+        ({ x, y } = snapToFloorHull(fitFloors, x, y, compLength, compWidth, floorLength, floorWidth, armorThickness));
     }
 
     // Try to find a valid position, adjusting if there's overlap
     const position = findValidPosition(
         floorIndex, x, y, compLength, compWidth,
-        floorLength, floorWidth, -1, requireHull
+        floorLength, floorWidth, -1, requireHull, fitFloors
     );
 
     if (!position) {
@@ -151,7 +132,7 @@ function placeMultiFloorComponent(data, x, y, compLength, compWidth, floorLength
     // Check the exact position is free on ALL selected floors first
     let allValid = true;
     for (const f of data.floors) {
-        const pos = findValidPosition(f, x, y, compLength, compWidth, floorLength, floorWidth, -1, requireHull);
+        const pos = findValidPosition(f, x, y, compLength, compWidth, floorLength, floorWidth, -1, requireHull, data.floors);
         if (!pos || Math.abs(pos.x - x) > 1e-6 || Math.abs(pos.y - y) > 1e-6) {
             allValid = false;
             break;

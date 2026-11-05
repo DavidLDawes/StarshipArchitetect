@@ -403,3 +403,20 @@ describe('summarizeFreeSpace', () => {
     expect(summarizeFreeSpace(regions, 0).fits).toBe(0);
   });
 });
+
+describe('analyzeFreeSpace with thin rows and columns crossing together', () => {
+  test('tiny cells that only touch other tiny cells still join the region', () => {
+    // Small rooms along two sides make thin rows and columns that cross as a cluster
+    // of tiny cells near (10, 10)
+    const occupied = [
+      { x: 10, y: 0, length: 0.2, width: 1 },
+      { x: 10.4, y: 0, length: 0.2, width: 1 },
+      { x: 0, y: 10, length: 1, width: 0.2 },
+      { x: 0, y: 10.4, length: 1, width: 0.2 }
+    ];
+    const { regions } = analyzeFreeSpace({ x0: 0, y0: 0, x1: 20, y1: 20 }, occupied);
+    const area = regions.reduce((sum, r) => sum + r.area, 0);
+    const taken = occupied.reduce((sum, r) => sum + r.length * r.width, 0);
+    expect(area).toBeCloseTo(400 - taken, 6);
+  });
+});

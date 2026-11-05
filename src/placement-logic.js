@@ -33,6 +33,34 @@ function isWithinUsableArea(x, y, length, width, floorLength, floorWidth, armorT
            y + width <= floorWidth - armorThickness + USABLE_AREA_EPS;
 }
 
+/**
+ * Check if a placement fits on a floor, following the current ship's hull shape
+ * @param {number|number[]} floors - Floor number, or the floors a component spans
+ * @returns {boolean} True if the whole rectangle is inside the usable space
+ */
+function fitsFloor(floors, x, y, length, width, floorLength, floorWidth, armorThickness = shipData.armorThickness) {
+    const inner = getShapedInner(floors);
+    if (!inner) return isWithinUsableArea(x, y, length, width, floorLength, floorWidth, armorThickness);
+    return isRectInConvexPolygon(inner, x, y, length, width);
+}
+
+/**
+ * Move a rectangle to the nearest position inside the usable space of a floor.
+ * On a shaped hull, a rectangle too big for the floor comes back where it was.
+ * @param {number|number[]} floors - Floor number, or the floors a component spans
+ * @returns {{x, y}}
+ */
+function clampToFloor(floors, x, y, length, width, floorLength, floorWidth, armorThickness = shipData.armorThickness) {
+    const inner = getShapedInner(floors);
+    if (!inner) {
+        return {
+            x: Math.max(armorThickness, Math.min(x, floorLength - length - armorThickness)),
+            y: Math.max(armorThickness, Math.min(y, floorWidth - width - armorThickness))
+        };
+    }
+    return closestPointInConvexPolygon(getRectFitRegion(inner, length, width), x, y) || { x, y };
+}
+
 // ========================================
 // Overlap Detection
 // ========================================
@@ -78,12 +106,83 @@ function checkOverlap(floorIndex, x, y, length, width, excludeComponentIndex = -
 // ========================================
 
 /**
+ * Rectangles of other components on a floor
+ * @returns {Array<{x, y, length, width}>}
+ */
+function getObstacleRects(floorIndex, excludeComponentIndex) {
+    const rects = [];
+    for (const [compIdxStr, placement] of Object.entries(shipData.componentPlacements)) {
+        if (parseInt(compIdxStr) === excludeComponentIndex || !placement.floors) continue;
+        for (const pos of placement.floors) {
+            if (pos.floor === floorIndex) rects.push(...getPlacementRects(pos, placement));
+        }
+    }
+    return rects;
+}
+
+/**
+ * findValidPosition for a shaped hull. Works from every position where the
+ * rectangle fits (getRectFitRegion), so anything taken from that region is
+ * inside the hull and anything on its boundary is against the hull.
+ * @param {Array<[number, number]>} inner - Usable space of the floor
+ * @returns {object|null} {x, y} if valid position found, null otherwise
+ */
+function findValidPositionInHull(inner, floorIndex, origX, origY, compLength, compWidth, excludeComponentIndex, requireHull) {
+    const isFree = (x, y) => !checkOverlap(floorIndex, x, y, compLength, compWidth, excludeComponentIndex);
+
+    if (isRectInConvexPolygon(inner, origX, origY, compLength, compWidth) &&
+        (!requireHull || isRectOnConvexPolygonWall(inner, origX, origY, compLength, compWidth)) &&
+        isFree(origX, origY)) {
+        return { x: origX, y: origY };
+    }
+
+    const region = getRectFitRegion(inner, compLength, compWidth);
+    if (region.length === 0) return null;
+    const settle = (x, y) => (requireHull
+        ? closestPointOnPolygonBoundary(region, x, y)
+        : closestPointInConvexPolygon(region, x, y));
+
+    // Try alongside each obstacle, and where those lines meet the edge of the region
+    const candidates = [settle(origX, origY)];
+    for (const r of getObstacleRects(floorIndex, excludeComponentIndex)) {
+        const xs = [r.x + r.length, r.x - compLength];
+        const ys = [r.y + r.width, r.y - compWidth];
+        for (const x of xs) {
+            candidates.push(settle(x, origY), ...getPolygonCrossings(region, 'x', x));
+            for (const y of ys) candidates.push(settle(x, y));
+        }
+        for (const y of ys) {
+            candidates.push(settle(origX, y), ...getPolygonCrossings(region, 'y', y));
+        }
+    }
+    for (const [x, y] of region) candidates.push({ x, y });
+
+    let best = null;
+    let bestDistance = Infinity;
+    for (const c of candidates) {
+        const distance = Math.hypot(c.x - origX, c.y - origY);
+        if (distance < bestDistance && isFree(c.x, c.y)) {
+            best = c;
+            bestDistance = distance;
+        }
+    }
+    return best;
+}
+
+/**
  * Find a valid position for a component, adjusting if there's overlap
  * @param {boolean} requireHull - Component must lie against the outer hull
  *   (weapons, vehicles, launch bays); candidates then slide along the hull
+ * @param {number|number[]} fitFloors - Floors the position has to fit and touch the
+ *   hull of, when the component spans several; overlap is only checked on floorIndex
  * @returns {object|null} {x, y} if valid position found, null otherwise
  */
-function findValidPosition(floorIndex, origX, origY, compLength, compWidth, floorLength, floorWidth, excludeComponentIndex, requireHull = false) {
+function findValidPosition(floorIndex, origX, origY, compLength, compWidth, floorLength, floorWidth, excludeComponentIndex, requireHull = false, fitFloors = floorIndex) {
+    const inner = getShapedInner(fitFloors);
+    if (inner) {
+        return findValidPositionInHull(inner, floorIndex, origX, origY, compLength, compWidth, excludeComponentIndex, requireHull);
+    }
+
     const armorThickness = shipData.armorThickness || 0;
     const onHull = (x, y) => !requireHull ||
         touchesHull(x, y, compLength, compWidth, floorLength, floorWidth, armorThickness);
@@ -96,18 +195,7 @@ function findValidPosition(floorIndex, origX, origY, compLength, compWidth, floo
     }
 
     // Get all components on this floor that might overlap
-    const overlappingComponents = [];
-    for (const [compIdxStr, placement] of Object.entries(shipData.componentPlacements)) {
-        const compIdx = parseInt(compIdxStr);
-        if (compIdx === excludeComponentIndex) continue;
-        if (!placement.floors) continue;
-
-        for (const pos of placement.floors) {
-            if (pos.floor === floorIndex) {
-                overlappingComponents.push(...getPlacementRects(pos, placement));
-            }
-        }
-    }
+    const overlappingComponents = getObstacleRects(floorIndex, excludeComponentIndex);
 
     // Generate candidate positions by aligning to edges of overlapping components
     const candidates = [];
@@ -225,5 +313,5 @@ function cancelPlacement() {
 
 // CommonJS export for Jest (no-op in browsers where `module` is undefined)
 if (typeof module !== 'undefined') {
-    module.exports = { isWithinUsableArea, checkOverlap, findValidPosition };
+    module.exports = { isWithinUsableArea, fitsFloor, clampToFloor, checkOverlap, findValidPosition };
 }

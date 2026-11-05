@@ -9,6 +9,16 @@
  * This module decides which components need hull access, checks and snaps
  * positions to the hull, and plans "fill the exposed areas of a floor", which
  * lines the free stretches of hull with blocks of items.
+ *
+ * The plain functions work on a rectangular floor from its size and armor. The
+ * floor-aware ones (touchesFloorHull, snapToFloorHull, getFloorUsableBounds,
+ * planFloorExposedFill) take a floor number, follow the current ship's hull shape,
+ * and are what the placement code should call. On a curved or sloping wall only a
+ * corner of a rectangle can touch, so a touching corner counts as being on the hull.
+ *
+ * Dependencies (globals in the browser, required in Jest via jest-setup):
+ * - hull-shapes.js (polygon helpers, resolveHullShape)
+ * - floor-utils.js (getShipGeometry)
  */
 
 // ========================================
@@ -239,6 +249,148 @@ function countExposedCapacity(bounds, occupied, along, depth) {
         .reduce((sum, a) => sum + a.count, 0);
 }
 
+/**
+ * Plan lining a curved or sloping hull with items, one rectangle per item.
+ *
+ * A straight run of a block can't follow a curve, so this walks around the wall
+ * and places an item wherever one fits. An item lies along whichever axis the
+ * wall is closer to at that point, with a corner touching the wall.
+ *
+ * @param {Array<[number, number]>} inner - Convex polygon inside the armor
+ * @param {Array<{x, y, length, width}>} occupied - Occupied rectangles
+ * @param {number} along - Item size along the hull (m)
+ * @param {number} depth - Item size away from the hull (m)
+ * @param {number} remaining - Items to place (Infinity to measure capacity)
+ * @returns {Array<object>} Allocations { count: 1, rects: [rect], area, bbox }
+ */
+function planCurvedExposedFill(inner, occupied, along, depth, remaining) {
+    if (!(along > 0) || !(depth > 0) || !(remaining > 0) || inner.length < 3) return [];
+    const alongX = getRectFitRegion(inner, along, depth);
+    const alongY = getRectFitRegion(inner, depth, along);
+    if (alongX.length === 0 && alongY.length === 0) return [];
+
+    // Fine enough that items end up nearly touching, without getting slow on a huge hull
+    const step = Math.max(
+        Math.min(0.1, Math.max(0.02, Math.min(along, depth) / 8)),
+        polygonPerimeter(inner) / 20000
+    );
+    const taken = occupied.slice();
+    const allocations = [];
+
+    for (let i = 0; i < inner.length && allocations.length < remaining; i++) {
+        const [ax, ay] = inner[i];
+        const [bx, by] = inner[(i + 1) % inner.length];
+        const size = Math.hypot(bx - ax, by - ay);
+        if (size <= HULL_EPS) continue;
+
+        let useAlongX = Math.abs(bx - ax) >= Math.abs(by - ay);
+        if ((useAlongX ? alongX : alongY).length === 0) useAlongX = !useAlongX;
+        const region = useAlongX ? alongX : alongY;
+        const length = useAlongX ? along : depth;
+        const width = useAlongX ? depth : along;
+
+        for (let d = 0; d < size && allocations.length < remaining; d += step) {
+            const t = d / size;
+            const p = closestPointOnPolygonBoundary(region,
+                ax + t * (bx - ax) - length / 2,
+                ay + t * (by - ay) - width / 2);
+            const rect = { x: p.x, y: p.y, length, width };
+            const blocked = taken.some(r =>
+                rect.x + length > r.x + HULL_EPS && r.x + r.length > rect.x + HULL_EPS &&
+                rect.y + width > r.y + HULL_EPS && r.y + r.width > rect.y + HULL_EPS);
+            if (blocked) continue;
+            taken.push(rect);
+            allocations.push({ count: 1, rects: [rect], area: length * width, bbox: { ...rect } });
+        }
+    }
+    return allocations;
+}
+
+// ========================================
+// Floor-Aware Rules
+// ========================================
+
+/** Last shared space worked out for a component spanning several floors */
+let commonInnerCache = { geometry: null, key: '', polygon: null };
+
+/**
+ * Usable space of one or more floors on a ship with a shaped hull.
+ * A component spanning several floors has to fit on all of them at the same x, y,
+ * so for several floors this is the space they share. Being against a wall of
+ * that shared space means being against the hull on at least one of the floors.
+ * @param {number|number[]} floors - Floor number, or the floors a component spans
+ * @returns {Array<[number, number]>|null} Convex polygon, empty if there is no
+ *   usable space, or null on a rectangular ship (use the floor size and armor)
+ */
+function getShapedInner(floors) {
+    if (resolveHullShape(shipData.hullShape) === 'rectangular') return null;
+    const geometry = getShipGeometry();
+    const list = Array.isArray(floors) ? floors : [floors];
+    const innerOf = f => (geometry.floors[f - 1] ? geometry.floors[f - 1].inner : []);
+    if (list.length === 1) return innerOf(list[0]);
+
+    const key = list.join(',');
+    if (commonInnerCache.geometry !== geometry || commonInnerCache.key !== key) {
+        const polygon = list.slice(1).reduce((common, f) => intersectConvexPolygons(common, innerOf(f)), innerOf(list[0]));
+        commonInnerCache = { geometry, key, polygon };
+    }
+    return commonInnerCache.polygon;
+}
+
+/**
+ * Whether a rectangle lies against the hull of a floor
+ * @param {number|number[]} floors - Floor number, or the floors a component spans
+ * @returns {boolean}
+ */
+function touchesFloorHull(floors, x, y, length, width, floorLength, floorWidth, armorThickness = 0) {
+    const inner = getShapedInner(floors);
+    if (!inner) return touchesHull(x, y, length, width, floorLength, floorWidth, armorThickness);
+    return isRectOnConvexPolygonWall(inner, x, y, length, width);
+}
+
+/**
+ * Move a rectangle to the nearest position against the hull of a floor. A
+ * rectangle too big for the floor comes back where it was.
+ * @param {number|number[]} floors - Floor number, or the floors a component spans
+ * @returns {{x, y}}
+ */
+function snapToFloorHull(floors, x, y, length, width, floorLength, floorWidth, armorThickness = 0) {
+    const inner = getShapedInner(floors);
+    if (!inner) return snapToHullEdge(x, y, length, width, floorLength, floorWidth, armorThickness);
+    return closestPointOnPolygonBoundary(getRectFitRegion(inner, length, width), x, y) || { x, y };
+}
+
+/**
+ * Box around the usable space of a floor, as edge coordinates
+ * @returns {{x0, y0, x1, y1}}
+ */
+function getFloorUsableBounds(floorIndex, floorLength, floorWidth, armorThickness = 0) {
+    const inner = getShapedInner(floorIndex);
+    if (!inner) return getHullBounds(floorLength, floorWidth, armorThickness);
+    if (inner.length === 0) return { x0: 0, y0: 0, x1: 0, y1: 0 };
+    const box = getPolygonBounds(inner);
+    return { x0: box.x, y0: box.y, x1: box.x + box.length, y1: box.y + box.width };
+}
+
+/**
+ * Plan lining the free hull of a floor with items
+ * @param {number} floorIndex - Floor number
+ * @param {Array<{x, y, length, width}>} occupied - Occupied rectangles
+ * @param {number} along - Item size along the hull (m)
+ * @param {number} depth - Item size away from the hull (m)
+ * @param {number} remaining - Items to place (Infinity to measure capacity)
+ * @returns {Array<object>} Allocations, each with count, rects, area and bbox
+ */
+function planFloorExposedFill(floorIndex, occupied, along, depth, remaining, floorLength, floorWidth, armorThickness = 0) {
+    const inner = getShapedInner(floorIndex);
+    if (inner && inner.length === 0) return [];
+    if (inner && !getShipGeometry().floors[floorIndex - 1].isRectangle) {
+        return planCurvedExposedFill(inner, occupied, along, depth, remaining);
+    }
+    const bounds = getFloorUsableBounds(floorIndex, floorLength, floorWidth, armorThickness);
+    return planExposedFill(bounds, occupied, along, depth, remaining);
+}
+
 // CommonJS export for Jest (no-op in browsers where `module` is undefined)
 if (typeof module !== 'undefined') {
     module.exports = {
@@ -250,6 +402,12 @@ if (typeof module !== 'undefined') {
         snapToHullEdge,
         getHullCandidates,
         planExposedFill,
-        countExposedCapacity
+        countExposedCapacity,
+        planCurvedExposedFill,
+        getShapedInner,
+        touchesFloorHull,
+        snapToFloorHull,
+        getFloorUsableBounds,
+        planFloorExposedFill
     };
 }
