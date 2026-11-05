@@ -185,18 +185,12 @@ function placeMultiFloorComponent(data, x, y, compLength, compWidth, floorLength
         ? getRemainingTons(component, shipData.componentPlacements[data.componentIndex]) / data.floors.length
         : 0;
 
+    const entries = [];
     for (const f of data.floors) {
         const entry = { floor: f, x: x, y: y, length: compLength, width: compWidth, ...roomFields };
         if (tonsPerFloor > 0) entry.tons = tonsPerFloor;
         shipData.componentPlacements[data.componentIndex].floors.push(entry);
-
-        // Record in history for undo
-        uiState.placementHistory.push({
-            type: 'place',
-            componentIndex: data.componentIndex, floor: f,
-            x: x, y: y, length: compLength, width: compWidth,
-            entry: entry
-        });
+        entries.push(entry);
 
         // Redraw each floor
         const c = document.getElementById(`floor-canvas-${f}`);
@@ -206,6 +200,8 @@ function placeMultiFloorComponent(data, x, y, compLength, compWidth, floorLength
         }
     }
 
+    // One step to undo: taking away one floor at a time would leave it out of line
+    uiState.placementHistory.push({ type: 'fill', componentIndex: data.componentIndex, entries });
     uiState.redoHistory = [];
     finishPlacement();
 }
