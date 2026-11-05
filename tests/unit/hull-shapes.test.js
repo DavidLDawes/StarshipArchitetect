@@ -23,7 +23,6 @@ const {
 const {
   calculateFloorWidth,
   calculateDefaultFloorLength,
-  calculateArmorThickness,
 } = require('../../src/floor-utils');
 const { getHullBounds } = require('../../src/hull-access');
 const { analyzeFreeSpace, MIN_PASSAGE } = require('../../src/placement-geometry');
@@ -271,8 +270,9 @@ describe('rectangular', () => {
     }
   });
 
-  test('armor thickness matches the existing formula', () => {
-    const expected = calculateArmorThickness(armorTons, 4, 30, floorArea, 2.5);
+  test('armor thickness is the armor volume per floor over that floor\'s wall area', () => {
+    const perimeter = 2 * (30 + floorArea / 30);
+    const expected = ((armorTons / 4) * 14) / (perimeter * 2.5);
     expect(geometry.armorThickness).toBeCloseTo(expected, 12);
   });
 

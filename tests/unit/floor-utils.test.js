@@ -8,8 +8,13 @@ const {
   generateDimensionOptions,
   generateDimensionOptionsWithStep,
   calculateArmorThickness,
+  getShipGeometry,
+  getFloorGeometry,
+  getUnusableFloors,
+  recalculateFloors,
   getCurrentFloorDimensions
 } = require('../../src/floor-utils');
+const { polygonArea, circlePolygon, getDefaultHullLength } = require('../../src/hull-shapes');
 
 // ============================================================
 // calculateTotalFloorArea
@@ -239,44 +244,34 @@ describe('generateDimensionOptionsWithStep', () => {
 
 describe('calculateArmorThickness', () => {
   test('0 armor tons returns 0', () => {
-    expect(calculateArmorThickness(0, 4, 30, 600, 2.5)).toBe(0);
+    expect(calculateArmorThickness(0, 400, 2.5)).toBe(0);
   });
 
-  test('0 numFloors returns 0', () => {
-    expect(calculateArmorThickness(50, 0, 30, 600, 2.5)).toBe(0);
+  test('0 perimeter returns 0', () => {
+    expect(calculateArmorThickness(50, 0, 2.5)).toBe(0);
   });
 
   test('negative armorTons returns 0', () => {
-    expect(calculateArmorThickness(-10, 4, 30, 600, 2.5)).toBe(0);
+    expect(calculateArmorThickness(-10, 400, 2.5)).toBe(0);
   });
 
   test('positive armor returns positive thickness', () => {
-    const result = calculateArmorThickness(50, 4, 30, 600, 2.5);
-    expect(result).toBeGreaterThan(0);
+    expect(calculateArmorThickness(50, 400, 2.5)).toBeGreaterThan(0);
   });
 
-  test('thickness formula: 50 tons, 4 floors, 30m len, 600m² area, 2.5m ceiling', () => {
-    // armorTonsPerFloor = 50/4 = 12.5
-    // armorVolume = 12.5 * 14 = 175
-    // floorWidth = 600/30 = 20
-    // perimeter = 2*(30+20) = 100
-    // thickness = 175 / (100 * 2.5) = 0.7
-    const result = calculateArmorThickness(50, 4, 30, 600, 2.5);
-    expect(result).toBeCloseTo(0.7, 5);
+  test('thickness formula: 50 tons, 4 floors of 30 × 20 m, 2.5m ceiling', () => {
+    // armorVolume = 50 * 14 = 700
+    // totalPerimeter = 4 * 2*(30+20) = 400
+    // thickness = 700 / (400 * 2.5) = 0.7
+    expect(calculateArmorThickness(50, 400, 2.5)).toBeCloseTo(0.7, 5);
   });
 
   test('more armor tonnage → thicker armor', () => {
-    const thin = calculateArmorThickness(10, 4, 30, 600, 2.5);
-    const thick = calculateArmorThickness(100, 4, 30, 600, 2.5);
-    expect(thick).toBeGreaterThan(thin);
+    expect(calculateArmorThickness(100, 400, 2.5)).toBeGreaterThan(calculateArmorThickness(10, 400, 2.5));
   });
 
-  test('more floors → thinner armor per floor', () => {
-    const twoFloors = calculateArmorThickness(50, 2, 30, 600, 2.5);
-    const eightFloors = calculateArmorThickness(50, 8, 30, 600, 2.5);
-    // Same total tons but spread over more floors → less per floor → same total coverage,
-    // but per-floor volume is smaller so thickness is smaller
-    expect(eightFloors).toBeLessThan(twoFloors);
+  test('more wall to cover → thinner armor', () => {
+    expect(calculateArmorThickness(50, 800, 2.5)).toBeLessThan(calculateArmorThickness(50, 200, 2.5));
   });
 });
 
@@ -327,5 +322,175 @@ describe('getCurrentFloorDimensions', () => {
     const dims = getCurrentFloorDimensions();
     expect(dims.totalArea).toBeCloseTo(500 * 14 / 2.5);
     expect(dims.floorArea).toBeCloseTo((500 * 14 / 2.5) / 2);
+  });
+
+  test('length and width are the shared frame on a shaped hull', () => {
+    global.shipData.hullShape = 'lifting-body';
+    const dims = getCurrentFloorDimensions();
+    const geometry = getShipGeometry();
+    expect(dims.floorLength).toBe(geometry.length);
+    expect(dims.floorWidth).toBe(geometry.width);
+    expect(dims.totalArea).toBeCloseTo(5600);
+    delete global.shipData.hullShape;
+  });
+});
+
+// ============================================================
+// Current ship geometry
+// ============================================================
+
+describe('current ship geometry', () => {
+  beforeEach(() => {
+    global.shipData.totalTons = 1000;
+    global.shipData.numFloors = 4;
+    global.shipData.floorLength = 30;
+    global.shipData.ceilingHeight = 2.5;
+    global.shipData.armorTons = 0;
+    global.shipData.armorThickness = 0;
+    delete global.shipData.hullShape;
+  });
+
+  afterAll(() => {
+    global.shipData.armorTons = 0;
+    global.shipData.armorThickness = 0;
+    delete global.shipData.hullShape;
+  });
+
+  describe('getShipGeometry', () => {
+    test('a ship with no shape set is rectangular', () => {
+      expect(getShipGeometry().shape).toBe('rectangular');
+    });
+
+    test('reuses the result until a setting changes', () => {
+      const first = getShipGeometry();
+      expect(getShipGeometry()).toBe(first);
+    });
+
+    test.each([
+      ['totalTons', 500],
+      ['numFloors', 2],
+      ['floorLength', 40],
+      ['ceilingHeight', 3],
+      ['armorTons', 10],
+      ['hullShape', 'disk'],
+    ])('rebuilds when %s changes', (setting, value) => {
+      const first = getShipGeometry();
+      global.shipData[setting] = value;
+      expect(getShipGeometry()).not.toBe(first);
+    });
+  });
+
+  describe('getFloorGeometry', () => {
+    test('returns the requested floor', () => {
+      expect(getFloorGeometry(1).floor).toBe(1);
+      expect(getFloorGeometry(4).floor).toBe(4);
+    });
+
+    test('floors differ on a shaped hull', () => {
+      global.shipData.hullShape = 'cone';
+      expect(getFloorGeometry(1).area).toBeGreaterThan(getFloorGeometry(4).area);
+    });
+
+    test('a floor that does not exist is null', () => {
+      expect(getFloorGeometry(0)).toBeNull();
+      expect(getFloorGeometry(5)).toBeNull();
+    });
+  });
+
+  describe('getUnusableFloors', () => {
+    test('no armor means every floor is usable', () => {
+      expect(getUnusableFloors()).toEqual([]);
+    });
+
+    test('lists floors the armor fills', () => {
+      global.shipData.totalTons = 4;
+      global.shipData.numFloors = 2;
+      global.shipData.floorLength = 5;
+      global.shipData.armorTons = 400;
+      expect(getUnusableFloors()).toEqual([1, 2]);
+    });
+
+    test('can list only the smallest floors of a shaped hull', () => {
+      global.shipData.hullShape = 'cone';
+      global.shipData.totalTons = 90;
+      global.shipData.armorTons = 90;
+      const unusable = getUnusableFloors();
+      expect(unusable).toContain(4);
+      expect(unusable).not.toContain(1);
+    });
+  });
+
+  describe('recalculateFloors', () => {
+    test('keeps the chosen length by default', () => {
+      global.shipData.floorLength = 37;
+      recalculateFloors();
+      expect(global.shipData.floorLength).toBe(37);
+    });
+
+    test('resets to the default length when asked', () => {
+      global.shipData.floorLength = 37;
+      recalculateFloors({ resetLength: true });
+      expect(global.shipData.floorLength).toBe(30);
+    });
+
+    test('updates the armor thickness', () => {
+      global.shipData.armorTons = 20;
+      recalculateFloors();
+      expect(global.shipData.armorThickness).toBe(getShipGeometry().armorThickness);
+      expect(global.shipData.armorThickness).toBeGreaterThan(0);
+    });
+
+    test('a shape that sets its own length overrides the chosen one', () => {
+      global.shipData.hullShape = 'disk';
+      global.shipData.floorLength = 37;
+      recalculateFloors();
+      expect(global.shipData.floorLength).toBeCloseTo(Math.sqrt((1400 / polygonArea(circlePolygon(0, 0, 1)))) * 2, 8);
+      expect(getCurrentFloorDimensions().floorLength).toBe(global.shipData.floorLength);
+    });
+
+    test('a shape with a free length can reset to its own default', () => {
+      global.shipData.hullShape = 'wedge';
+      global.shipData.floorLength = 37;
+      recalculateFloors({ resetLength: true });
+      expect(global.shipData.floorLength).toBe(getDefaultHullLength('wedge', 5600, 4));
+    });
+
+    // The formulas the app used before hull shapes, written out so a change to
+    // rectangular ships can't go unnoticed
+    describe('rectangular ships match the previous calculations', () => {
+      const previousDefaultLength = area => Math.max(5, Math.floor(Math.sqrt(area) / 10) * 10);
+      const previousArmor = (armorTons, floors, length, area, ceiling) =>
+        (armorTons <= 0 ? 0 : ((armorTons / floors) * 14) / (2 * (length + area / length) * ceiling));
+
+      const ships = [[90, 11.25], [300, 0], [1000, 10], [5000, 0], [100000, 2500]];
+      const floorCounts = [1, 2, 3, 4, 7, 12, 20];
+      const ceilings = [2, 2.5, 3.3];
+
+      test.each(ships)('%d tons with %d tons of armor', (tons, armorTons) => {
+        for (const numFloors of floorCounts) {
+          for (const ceilingHeight of ceilings) {
+            Object.assign(global.shipData, { totalTons: tons, armorTons, numFloors, ceilingHeight });
+            const floorArea = (tons * 14) / ceilingHeight / numFloors;
+
+            // Loading a design or moving the floor slider
+            recalculateFloors({ resetLength: true });
+            const length = previousDefaultLength(floorArea);
+            expect(global.shipData.floorLength).toBe(length);
+            expect(getCurrentFloorDimensions().floorWidth).toBe(floorArea / length);
+            expect(getCurrentFloorDimensions().floorArea).toBe(floorArea);
+            expect(global.shipData.armorThickness)
+              .toBeCloseTo(previousArmor(armorTons, numFloors, length, floorArea, ceilingHeight), 10);
+
+            // Typing a length
+            global.shipData.floorLength = 17.5;
+            recalculateFloors();
+            expect(global.shipData.floorLength).toBe(17.5);
+            expect(getCurrentFloorDimensions().floorWidth).toBe(floorArea / 17.5);
+            expect(global.shipData.armorThickness)
+              .toBeCloseTo(previousArmor(armorTons, numFloors, 17.5, floorArea, ceilingHeight), 10);
+          }
+        }
+      });
+    });
   });
 });

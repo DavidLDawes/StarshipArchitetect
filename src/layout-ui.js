@@ -234,9 +234,8 @@ function applyLayout(layout, { useSavedDesign, sourceName = 'layout', quiet = fa
     shipData.numFloors = layout.floors.count;
     shipData.floorLength = layout.floors.length;
     shipData.ceilingHeight = layout.floors.ceilingHeight;
+    recalculateFloors();
     const dims = getCurrentFloorDimensions();
-    shipData.armorThickness = calculateArmorThickness(shipData.armorTons, shipData.numFloors,
-        shipData.floorLength, dims.floorArea, shipData.ceilingHeight);
 
     // Options that change component sizes go before the placements
     const problems = [];
