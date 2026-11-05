@@ -265,6 +265,9 @@ function drawFloorWithComponents(canvas, floorIndex, length, width, placements =
     const canvasWidth = canvas.width;
     const pixelsPerMeter = canvasWidth / length;
 
+    // Circles and arcs go on top: a free region next to one can poke slightly into it
+    const rooms = [];
+
     // Draw each component placed on this floor
     for (const [compIdxStr, placement] of Object.entries(placements)) {
         const compIdx = parseInt(compIdxStr);
@@ -280,7 +283,9 @@ function drawFloorWithComponents(canvas, floorIndex, length, width, placements =
             itemNum += count;
             if (pos.floor !== floorIndex) continue;
 
-            if (pos.rects && pos.rects.length > 0) {
+            if (pos.roomShape) {
+                rooms.push({ pos, component, compIdx, firstItemNum, count });
+            } else if (pos.rects && pos.rects.length > 0) {
                 ctx.save();
                 clipToFloorHull(ctx, floorIndex, pixelsPerMeter);
                 drawPlacedShape(ctx, pos.rects, component, pixelsPerMeter, compIdx, count, pos.tons);
@@ -293,6 +298,10 @@ function drawFloorWithComponents(canvas, floorIndex, length, width, placements =
                     component, pixelsPerMeter, compIdx, firstItemNum, count, pos.tons);
             }
         }
+    }
+
+    for (const { pos, component, compIdx, firstItemNum, count } of rooms) {
+        drawPlacedRoom(ctx, pos, component, pixelsPerMeter, compIdx, firstItemNum, count);
     }
 
     updateFloorSpaceReadout(floorIndex);
@@ -426,6 +435,31 @@ function drawPlacedComponent(ctx, x, y, compLength, compWidth, component, pixels
     ctx.strokeRect(px, py, pw, ph);
 
     drawFittedLabel(ctx, getPlacementLabel(component, placementNum, count, tons), px + pw / 2, py + ph / 2, pw);
+}
+
+/**
+ * Draw a placed circle or arc on the canvas
+ * @param {object} pos - Room entry
+ * @param {number} placementNum - The individual item number (1, 2, 3, etc.)
+ * @param {number} count - Number of items it holds
+ */
+function drawPlacedRoom(ctx, pos, component, pixelsPerMeter, compIdx, placementNum, count) {
+    const outline = getRoomOutline(pos);
+    const colors = getComponentColors(compIdx);
+
+    ctx.beginPath();
+    tracePolygon(ctx, outline, pixelsPerMeter);
+    ctx.fillStyle = colors.fill;
+    ctx.fill();
+    ctx.strokeStyle = colors.stroke;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    const center = getPolygonCentroid(outline);
+    const span = getPolygonSpan(outline, center.y);
+    const labelWidth = span ? (span[1] - span[0]) * pixelsPerMeter : pos.length * pixelsPerMeter;
+    drawFittedLabel(ctx, getPlacementLabel(component, placementNum, count, pos.tons),
+        center.x * pixelsPerMeter, center.y * pixelsPerMeter, labelWidth);
 }
 
 /**

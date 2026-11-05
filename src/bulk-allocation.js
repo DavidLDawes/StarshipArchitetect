@@ -129,8 +129,10 @@ function applyAllocations(componentIndex, floorIndex, allocations) {
         }
         // A region that came out as a single rectangle stays a plain block, so it
         // can still be moved, rotated, and resized like any other placement. Unless
-        // it pokes slightly past a curved wall, when it stays clipped to the hull.
-        if (a.rects.length > 1 || !fitsFloor(floorIndex, a.bbox.x, a.bbox.y, a.bbox.length, a.bbox.width, floorLength, floorWidth, armor)) {
+        // it pokes slightly past a curved wall, when it stays clipped to the hull,
+        // or slightly into a circle or arc.
+        if (a.rects.length > 1 || !fitsFloor(floorIndex, a.bbox.x, a.bbox.y, a.bbox.length, a.bbox.width, floorLength, floorWidth, armor) ||
+            checkOverlap(floorIndex, a.bbox.x, a.bbox.y, a.bbox.length, a.bbox.width)) {
             entry.rects = a.rects;
         }
         return entry;
@@ -211,7 +213,7 @@ function setupAllocationSection(componentIndex) {
 
     section.classList.remove('hidden');
     document.getElementById('allocation-block-option').classList.toggle('hidden', byTons);
-    document.getElementById('allocation-single-text').textContent = byTons ? 'All that is left as one rectangle' : 'One at a time';
+    document.getElementById('allocation-single-text').textContent = byTons ? 'All that is left as one room' : 'One at a time';
     document.getElementById('allocation-fill-floor-text').textContent = byTons
         ? 'Fill free space on the selected floor, any shape'
         : 'Fill the rest of the selected floor';
@@ -358,16 +360,15 @@ function updateBlockOptions(componentIndex, component, itemArea, preview) {
         { ...component, tons: blockTons, tonsPerItem: blockTons, overheadPerItem: 0 },
         floorIndex, 1
     );
-    for (const opt of dimInfo.options) {
-        const option = document.createElement('option');
-        option.value = `${opt.length},${opt.width}`;
-        option.textContent = opt.label;
-        dimSelect.appendChild(option);
-    }
+    const roomOptions = getRoomShapeOptions(
+        { ...component, tons: blockTons, tonsPerItem: blockTons, overheadPerItem: 0 },
+        floorIndex, 1
+    );
+    fillDimensionSelect(dimSelect, dimInfo.options.concat(roomOptions));
 
-    if (dimInfo.options.length === 0) {
+    if (dimInfo.options.length + roomOptions.length === 0) {
         preview.classList.add('warning');
-        preview.textContent = `No rectangle shape for ${count} items fits this floor layout. Try a different block size.`;
+        preview.textContent = `No shape for ${count} items fits this floor layout. Try a different block size.`;
         setPlaceButton('Place Block', false);
         return;
     }
@@ -890,5 +891,6 @@ function setupAllocationEvents() {
 
     document.getElementById('component-dimensions').addEventListener('change', () => {
         if (getAllocationMode() === 'fill-exposed') updateFillExposedPreview();
+        else moveFloorsToRoomChoice();
     });
 }

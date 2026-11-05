@@ -257,6 +257,42 @@ function intersectConvexPolygons(a, b) {
 }
 
 /**
+ * Whether two convex polygons overlap. Two convex shapes are apart exactly when a
+ * wall of one of them has the whole of the other on its outer side.
+ * @param {Array<[number, number]>} a - Convex polygon in standard direction
+ * @param {Array<[number, number]>} b - Convex polygon in standard direction
+ * @param {number} eps - Overlap smaller than this doesn't count, so shapes can touch
+ * @returns {boolean}
+ */
+function doConvexPolygonsOverlap(a, b, eps = HULL_FIT_EPS) {
+    if (a.length < 3 || b.length < 3) return false;
+    const isApart = (walls, points) => walls.some(wall =>
+        points.every(([x, y]) => x * wall.nx + y * wall.ny - wall.offset <= eps));
+    return !isApart(getPolygonWalls(a), b) && !isApart(getPolygonWalls(b), a);
+}
+
+/**
+ * Center of area of a polygon
+ * @returns {{x, y}}
+ */
+function getPolygonCentroid(polygon) {
+    const twiceArea = signedPolygonArea(polygon) * 2;
+    if (Math.abs(twiceArea) <= HULL_FIT_EPS) {
+        const box = getPolygonBounds(polygon);
+        return { x: box.x + box.length / 2, y: box.y + box.width / 2 };
+    }
+    let x = 0;
+    let y = 0;
+    polygon.forEach(([ax, ay], i) => {
+        const [bx, by] = polygon[(i + 1) % polygon.length];
+        const cross = ax * by - bx * ay;
+        x += (ax + bx) * cross;
+        y += (ay + by) * cross;
+    });
+    return { x: x / (3 * twiceArea), y: y / (3 * twiceArea) };
+}
+
+/**
  * Whether a point lies inside a convex polygon or on its boundary
  * @param {Array<[number, number]>} polygon - Convex polygon in standard direction
  * @returns {boolean}
@@ -768,6 +804,11 @@ if (typeof module !== 'undefined') {
         circlePolygon,
         roundedRectanglePolygon,
         insetConvexPolygon,
+        getPolygonWalls,
+        clipPolygonToHalfPlane,
+        doConvexPolygonsOverlap,
+        getPolygonCentroid,
+        getPolygonSpan,
         isPointInConvexPolygon,
         isRectInConvexPolygon,
         intersectConvexPolygons,

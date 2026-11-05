@@ -19,6 +19,7 @@ let previewState = {
     width: null,
     excludeComponentIndex: -1, // For move operations, which component to exclude from overlap check
     requireHull: false, // Component must touch the outer hull (weapons, vehicles, launch bays)
+    room: null, // The room when previewing a circle or arc
     animationFrameId: null // For throttling redraws
 };
 
@@ -41,6 +42,11 @@ function drawPreview(canvas, floorIndex, length, width) {
     const ctx = canvas.getContext('2d');
     const canvasWidth = canvas.width;
     const pixelsPerMeter = canvasWidth / length;
+
+    if (previewState.room) {
+        drawRoomPreview(ctx, pixelsPerMeter);
+        return;
+    }
 
     const px = previewState.x * pixelsPerMeter;
     const py = previewState.y * pixelsPerMeter;
@@ -98,6 +104,24 @@ function drawPreview(canvas, floorIndex, length, width) {
     ctx.setLineDash([]);
 }
 
+/**
+ * Draw the preview of a circle or arc, with the same coloring as a rectangle's.
+ * positionRoom() has already put it inside the hull, and against it if it has to be.
+ */
+function drawRoomPreview(ctx, pixelsPerMeter) {
+    const isValid = isRoomClear(previewState.room, [].concat(previewState.fitFloors), previewState.excludeComponentIndex);
+
+    ctx.beginPath();
+    tracePolygon(ctx, getRoomOutline(previewState.room), pixelsPerMeter);
+    ctx.fillStyle = isValid ? 'rgba(0, 255, 100, 0.3)' : 'rgba(255, 0, 0, 0.3)';
+    ctx.fill();
+    ctx.strokeStyle = isValid ? 'rgba(0, 255, 100, 0.8)' : 'rgba(255, 0, 0, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+}
+
 // ========================================
 // Mouse Event Handlers
 // ========================================
@@ -123,6 +147,7 @@ function handleCanvasMouseMove(event, floorIndex) {
     // Get component dimensions for preview
     let compLength, compWidth, excludeIndex, componentIndex;
     let fitFloors = floorIndex;
+    let room = null;
 
     if (uiState.isPlacingComponent) {
         // Placement mode
@@ -136,6 +161,7 @@ function handleCanvasMouseMove(event, floorIndex) {
         excludeIndex = -1;
         componentIndex = data.componentIndex;
         if (data.isMultiFloor) fitFloors = data.floors;
+        if (data.roomShape) room = data;
     } else if (uiState.selectedPlacement) {
         // Move mode (region shapes can't be moved, so no preview)
         const sel = uiState.selectedPlacement;
@@ -147,6 +173,7 @@ function handleCanvasMouseMove(event, floorIndex) {
         compWidth = sel.width;
         excludeIndex = sel.componentIndex;
         componentIndex = sel.componentIndex;
+        if (sel.roomShape) room = getSelectedRoom(sel);
     } else {
         clearPreview();
         return;
@@ -169,14 +196,27 @@ function handleCanvasMouseMove(event, floorIndex) {
     const mouseX = mousePxX / pixelsPerMeter;
     const mouseY = mousePxY / pixelsPerMeter;
 
+    // A circle or arc works out its own position
+    if (room) {
+        const spot = positionRoom(room, [].concat(fitFloors), mouseX, mouseY,
+            requiresHullAccess(shipData.components[componentIndex]));
+        if (!spot) {
+            clearPreview();
+            return;
+        }
+        compLength = spot.length;
+        compWidth = spot.width;
+        room = spot;
+    }
+
     // Center the preview on the mouse, keeping it inside the hull and armor
     const armorThickness = shipData.armorThickness || 0;
-    let { x: previewX, y: previewY } = clampToFloor(fitFloors, mouseX - compLength / 2, mouseY - compWidth / 2,
+    let { x: previewX, y: previewY } = room || clampToFloor(fitFloors, mouseX - compLength / 2, mouseY - compWidth / 2,
         compLength, compWidth, floorLength, floorWidth, armorThickness);
 
     // Hull components (weapons, vehicles, launch bays) follow the nearest part of the hull
     const requireHull = requiresHullAccess(shipData.components[componentIndex]);
-    if (requireHull) {
+    if (requireHull && !room) {
         ({ x: previewX, y: previewY } = snapToFloorHull(fitFloors, previewX, previewY, compLength, compWidth,
             floorLength, floorWidth, armorThickness));
     }
@@ -194,6 +234,7 @@ function handleCanvasMouseMove(event, floorIndex) {
     previewState.width = compWidth;
     previewState.excludeComponentIndex = excludeIndex;
     previewState.requireHull = requireHull;
+    previewState.room = room;
 
     // Throttle redraws using requestAnimationFrame
     if (previewState.animationFrameId === null) {
@@ -242,6 +283,7 @@ function clearPreview() {
     previewState.width = null;
     previewState.excludeComponentIndex = -1;
     previewState.requireHull = false;
+    previewState.room = null;
 }
 
 // ========================================

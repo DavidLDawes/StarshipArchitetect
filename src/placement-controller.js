@@ -73,6 +73,12 @@ function placeComponentOnCanvas(event, floorIndex) {
     const clickX = clickPxX / pixelsPerMeter;
     const clickY = clickPxY / pixelsPerMeter;
 
+    // Circles and arcs find their spot from their own shape
+    if (data.roomShape) {
+        placeRoomOnCanvas(data, floorIndex, clickX, clickY, floorLength, floorWidth, canvas);
+        return;
+    }
+
     // Component dimensions
     const compLength = data.length;
     const compWidth = data.width;
@@ -121,6 +127,28 @@ function placeComponentOnCanvas(event, floorIndex) {
     placeSingleFloorComponent(data, floorIndex, x, y, compLength, compWidth, floorLength, floorWidth, canvas);
 }
 
+/**
+ * Place a circle or arc at the clicked position
+ */
+function placeRoomOnCanvas(data, floorIndex, clickX, clickY, floorLength, floorWidth, canvas) {
+    const requireHull = requiresHullAccess(shipData.components[data.componentIndex]);
+    const fitFloors = data.isMultiFloor ? data.floors : [floorIndex];
+    const spot = findRoomSpot(data, fitFloors, clickX, clickY, -1, requireHull);
+
+    if (!spot) {
+        canvas.style.boxShadow = '0 0 20px red';
+        setTimeout(() => { canvas.style.boxShadow = ''; }, 300);
+        return;
+    }
+
+    const roomFields = getRoomFields(spot);
+    if (data.isMultiFloor) {
+        placeMultiFloorComponent(data, spot.x, spot.y, spot.length, spot.width, floorLength, floorWidth, canvas, requireHull, roomFields);
+    } else {
+        placeSingleFloorComponent(data, floorIndex, spot.x, spot.y, spot.length, spot.width, floorLength, floorWidth, canvas, roomFields);
+    }
+}
+
 // ========================================
 // Multi-Floor Component Placement
 // ========================================
@@ -128,10 +156,11 @@ function placeComponentOnCanvas(event, floorIndex) {
 /**
  * Place a component across multiple floors
  */
-function placeMultiFloorComponent(data, x, y, compLength, compWidth, floorLength, floorWidth, canvas, requireHull = false) {
+function placeMultiFloorComponent(data, x, y, compLength, compWidth, floorLength, floorWidth, canvas, requireHull = false, roomFields = null) {
     // Check the exact position is free on ALL selected floors first
+    // (a circle or arc has already been checked on all of them)
     let allValid = true;
-    for (const f of data.floors) {
+    for (const f of roomFields ? [] : data.floors) {
         const pos = findValidPosition(f, x, y, compLength, compWidth, floorLength, floorWidth, -1, requireHull, data.floors);
         if (!pos || Math.abs(pos.x - x) > 1e-6 || Math.abs(pos.y - y) > 1e-6) {
             allValid = false;
@@ -157,7 +186,7 @@ function placeMultiFloorComponent(data, x, y, compLength, compWidth, floorLength
         : 0;
 
     for (const f of data.floors) {
-        const entry = { floor: f, x: x, y: y, length: compLength, width: compWidth };
+        const entry = { floor: f, x: x, y: y, length: compLength, width: compWidth, ...roomFields };
         if (tonsPerFloor > 0) entry.tons = tonsPerFloor;
         shipData.componentPlacements[data.componentIndex].floors.push(entry);
 
@@ -190,14 +219,14 @@ function placeMultiFloorComponent(data, x, y, compLength, compWidth, floorLength
  * When data.count > 1 the rectangle is a block holding that many items and
  * placement mode ends after it is placed.
  */
-function placeSingleFloorComponent(data, floorIndex, x, y, compLength, compWidth, floorLength, floorWidth, canvas) {
+function placeSingleFloorComponent(data, floorIndex, x, y, compLength, compWidth, floorLength, floorWidth, canvas, roomFields = null) {
     // Store placement with individual dimensions
     if (!shipData.componentPlacements[data.componentIndex]) {
         shipData.componentPlacements[data.componentIndex] = { floors: [] };
     }
 
     const count = data.count > 1 ? data.count : 1;
-    const entry = { floor: floorIndex, x: x, y: y, length: compLength, width: compWidth };
+    const entry = { floor: floorIndex, x: x, y: y, length: compLength, width: compWidth, ...roomFields };
     if (count > 1) entry.count = count;
     const placedByTons = canTakeIrregularSpace(shipData.components[data.componentIndex]);
     if (placedByTons) {
@@ -224,10 +253,10 @@ function placeSingleFloorComponent(data, floorIndex, x, y, compLength, compWidth
     if (count === 1 && placedCount < totalQuantity && !placedByTons) {
         // More items to place - continue placement mode
         renderComponents();
-        data.floors = [];
-        for (let i = 1; i <= shipData.numFloors; i++) {
-            data.floors.push(i);
-        }
+        // An arc is cut to its floor's radius, so it can only go on floors the same size
+        data.floors = data.roomShape
+            ? getFloorsForRoom(data, floorIndex)
+            : Array.from({ length: shipData.numFloors }, (_, i) => i + 1);
         for (const floor of data.floors) {
             const c = document.getElementById(`floor-canvas-${floor}`);
             if (c) {

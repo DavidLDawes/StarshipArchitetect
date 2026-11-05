@@ -23,7 +23,7 @@
 // ========================================
 
 const LAYOUT_FORMAT = 'starship-architect-layout';
-const LAYOUT_VERSION = 3;
+const LAYOUT_VERSION = 4;
 
 /** Tons over a component's total that count as rounding when restoring */
 const LAYOUT_TONS_EPS = 0.01;
@@ -99,6 +99,7 @@ function serializeEntry(pos, placement) {
     };
     if (getPlacementCount(pos) > 1) out.count = getPlacementCount(pos);
     if (pos.tons > 0) out.tons = pos.tons;
+    if (pos.roomShape) Object.assign(out, getRoomFields(pos));
     if (pos.rects && pos.rects.length > 0) {
         out.rects = rects.map(r => ({ x: r.x, y: r.y, length: r.length, width: r.width }));
     }
@@ -255,6 +256,15 @@ function cleanEntry(raw) {
         if (!isNum(raw.tons) || raw.tons <= 0) return null;
         entry.tons = raw.tons;
     }
+    if (raw.roomShape === 'circle') {
+        if (Math.abs(raw.length - raw.width) > LAYOUT_EPS) return null;
+        entry.roomShape = 'circle';
+    } else if (raw.roomShape === 'arc') {
+        if (!isNum(raw.arcAngle) || !isNum(raw.arcArea) || raw.arcArea <= 0) return null;
+        Object.assign(entry, { roomShape: 'arc', arcAngle: raw.arcAngle, arcArea: raw.arcArea });
+    } else if (raw.roomShape !== undefined) {
+        return null;
+    }
     if (raw.rects !== undefined) {
         if (!Array.isArray(raw.rects) || raw.rects.length === 0) return null;
         const rects = raw.rects.map(r => (r && [r.x, r.y, r.length, r.width].every(isNum) && r.length > 0 && r.width > 0
@@ -265,16 +275,14 @@ function cleanEntry(raw) {
     return entry;
 }
 
-const rectsOverlap = (a, b) =>
-    a.x + a.length > b.x + LAYOUT_EPS && b.x + b.length > a.x + LAYOUT_EPS &&
-    a.y + a.width > b.y + LAYOUT_EPS && b.y + b.width > a.y + LAYOUT_EPS;
-
 /**
  * Whether an entry's rectangles are inside the usable space of its floor.
  * Free regions on a curved or sloping floor are built from bands that can poke
  * past the wall by up to half a band, which is less than HULL_BAND_STEP.
  */
-function entryFitsFloor(entry, rects, bounds) {
+function entryFitsFloor(entry, bounds) {
+    if (entry.roomShape) return isRoomFitting(entry, [entry.floor]);
+    const rects = getPlacementRects(entry);
     const inner = getShapedInner(entry.floor);
     if (!inner) {
         return rects.every(r => r.x >= bounds.x0 - LAYOUT_EPS && r.y >= bounds.y0 - LAYOUT_EPS &&
@@ -295,7 +303,9 @@ function entryTouchesHull(entry, savedEntries, floor) {
         other.floor >= 1 && other.floor <= floor.count &&
         Math.abs(other.x - entry.x) <= LAYOUT_EPS && Math.abs(other.y - entry.y) <= LAYOUT_EPS &&
         Math.abs(other.length - entry.length) <= LAYOUT_EPS && Math.abs(other.width - entry.width) <= LAYOUT_EPS);
-    return spanned.some(e => touchesFloorHull(e.floor, e.x, e.y, e.length, e.width, floor.length, floor.width, armor));
+    return spanned.some(e => (e.roomShape
+        ? roomTouchesHull(e, [e.floor])
+        : touchesFloorHull(e.floor, e.x, e.y, e.length, e.width, floor.length, floor.width, armor)));
 }
 
 /**
@@ -332,7 +342,7 @@ function restorePlacements(layout, components, floor) {
     const placements = {};
     const problems = [];
     const used = new Set();
-    const restoredRects = {}; // floor -> rects already restored
+    const restoredEntries = {}; // floor -> entries already restored
     let restored = 0;
     let dropped = 0;
 
@@ -387,19 +397,23 @@ function restorePlacements(layout, components, floor) {
                 return;
             }
 
-            const rects = getPlacementRects(entry);
-            if (!entryFitsFloor(entry, rects, bounds)) {
+            if (!entryFitsFloor(entry, bounds)) {
                 problems.push(`${where} (floor ${entry.floor}) no longer fits inside the hull and armor.`);
                 dropped++;
                 return;
+            }
+            // An arc follows the wall, so its box comes from the floor as it is now
+            if (entry.roomShape === 'arc') {
+                const box = getPolygonBounds(getRoomOutline(entry));
+                Object.assign(entry, { x: box.x, y: box.y, length: box.length, width: box.width });
             }
             if (hull && !entryTouchesHull(entry, entries, floor)) {
                 problems.push(`${where} (floor ${entry.floor}) no longer touches the outer hull.`);
                 dropped++;
                 return;
             }
-            const others = restoredRects[entry.floor] || [];
-            if (rects.some(r => others.some(o => rectsOverlap(r, o)))) {
+            const others = restoredEntries[entry.floor] || [];
+            if (others.some(o => placementsOverlap(entry, o, undefined, LAYOUT_EPS))) {
                 problems.push(`${where} (floor ${entry.floor}) overlaps another component.`);
                 dropped++;
                 return;
@@ -421,7 +435,7 @@ function restorePlacements(layout, components, floor) {
                 delete entry.count;
                 placedTons += entry.tons;
                 kept.push(entry);
-                restoredRects[entry.floor] = others.concat(rects);
+                restoredEntries[entry.floor] = others.concat([entry]);
                 restored++;
                 return;
             }
@@ -433,7 +447,7 @@ function restorePlacements(layout, components, floor) {
                 Math.abs(k.length - entry.length) <= LAYOUT_EPS && Math.abs(k.width - entry.width) <= LAYOUT_EPS);
             if (spansFloors) {
                 kept.push(entry);
-                restoredRects[entry.floor] = others.concat(rects);
+                restoredEntries[entry.floor] = others.concat([entry]);
                 restored++;
                 return;
             }
@@ -453,7 +467,7 @@ function restorePlacements(layout, components, floor) {
 
             placedItems += entry.count || 1;
             kept.push(entry);
-            restoredRects[entry.floor] = others.concat(rects);
+            restoredEntries[entry.floor] = others.concat([entry]);
             restored++;
         });
 

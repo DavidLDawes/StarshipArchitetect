@@ -433,7 +433,6 @@ describe('layouts with tonnage placements', () => {
       ...serializeLayout({ ...global.shipData, components: [fuel], componentPlacements: { 0: { floors: entries } }, floorWidth: 30 }),
       ship: { csv: 'x' }
     }));
-    expect(layout.version).toBe(3);
     expect(layout.version).toBe(LAYOUT_VERSION);
     const result = restorePlacements(layout, [fuel], floor);
     expect(result.problems).toEqual([]);

@@ -39,9 +39,11 @@ function handleComponentSelection(event, floorIndex) {
             const pWidth = pos.width || placement.width;
             const rects = getPlacementRects(pos, placement);
 
-            // Check if click is inside this component (any of its rectangles)
-            const hit = rects.some(r => clickX >= r.x && clickX <= r.x + r.length &&
-                clickY >= r.y && clickY <= r.y + r.width);
+            // Check if click is inside this component (its outline, or any of its rectangles)
+            const hit = pos.roomShape
+                ? isPointInConvexPolygon(getRoomOutline(pos), clickX, clickY)
+                : rects.some(r => clickX >= r.x && clickX <= r.x + r.length &&
+                    clickY >= r.y && clickY <= r.y + r.width);
             if (hit) {
                 const isShape = !!(pos.rects && pos.rects.length > 0);
 
@@ -54,7 +56,8 @@ function handleComponentSelection(event, floorIndex) {
                     width: pWidth,
                     originalX: pos.x,
                     originalY: pos.y,
-                    isShape: isShape
+                    isShape: isShape,
+                    roomShape: pos.roomShape
                 };
 
                 // Add visual feedback
@@ -62,7 +65,9 @@ function handleComponentSelection(event, floorIndex) {
 
                 // Redraw with selection highlight
                 drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
-                if (isShape) {
+                if (pos.roomShape) {
+                    drawRoomSelectionHighlight(canvas, pos, pixelsPerMeter);
+                } else if (isShape) {
                     drawShapeSelectionHighlight(canvas, rects, pixelsPerMeter, floorIndex);
                 } else {
                     drawSelectionHighlight(canvas, pos.x, pos.y, pLength, pWidth, pixelsPerMeter);
@@ -71,7 +76,7 @@ function handleComponentSelection(event, floorIndex) {
                 // Show instructions
                 showSelectionInstructions(isShape
                     ? (pos.tons > 0 ? `${pos.tons.toFixed(1)} tons` : `${getPlacementCount(pos)} items`)
-                    : '');
+                    : '', pos.roomShape);
 
                 return;
             }
@@ -121,10 +126,36 @@ function drawShapeSelectionHighlight(canvas, rects, pixelsPerMeter, floorIndex) 
 }
 
 /**
+ * Draw selection highlight on a circle or arc
+ */
+function drawRoomSelectionHighlight(canvas, pos, pixelsPerMeter) {
+    const ctx = canvas.getContext('2d');
+    ctx.beginPath();
+    tracePolygon(ctx, getRoomOutline(pos), pixelsPerMeter);
+    ctx.strokeStyle = '#00ff00';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([8, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+}
+
+/**
+ * The selected circle or arc, ready to position. An arc stays cut to the radius of
+ * the floor it is on, so it can't move to a floor of another size.
+ * @param {object} sel - uiState.selectedPlacement
+ * @returns {object} Room or placement data
+ */
+function getSelectedRoom(sel) {
+    const pos = shipData.componentPlacements[sel.componentIndex].floors[sel.placementIndex];
+    return pos.roomShape === 'arc' ? { ...pos, radius: getArcRadius(pos.floor) } : pos;
+}
+
+/**
  * Show selection mode instructions
  * @param {string} regionContents - What a selected region placement holds ('' otherwise)
+ * @param {string} roomShape - Shape of a selected circle or arc
  */
-function showSelectionInstructions(regionContents = '') {
+function showSelectionInstructions(regionContents = '', roomShape = null) {
     let instructions = document.getElementById('placement-instructions');
     if (!instructions) {
         instructions = document.createElement('div');
@@ -132,9 +163,13 @@ function showSelectionInstructions(regionContents = '') {
         instructions.className = 'placement-instructions';
         document.body.appendChild(instructions);
     }
+    const roomText = {
+        circle: 'Click to move | Delete to remove | Escape to cancel',
+        arc: 'Click to move around the wall | R/L to turn a quarter of the way around | Delete to remove | Escape to cancel'
+    };
     instructions.textContent = regionContents
         ? `Region holding ${regionContents} | Delete to remove | Click elsewhere or Escape to deselect`
-        : 'Drag edges to resize | Click to move | R/L to rotate | Delete to remove | Escape to cancel';
+        : roomText[roomShape] || 'Drag edges to resize | Click to move | R/L to rotate | Delete to remove | Escape to cancel';
     instructions.classList.remove('hidden');
 }
 
@@ -204,6 +239,11 @@ function handleComponentMove(event, floorIndex) {
     let clickX = clickPxX / pixelsPerMeter;
     let clickY = clickPxY / pixelsPerMeter;
 
+    if (sel.roomShape) {
+        moveSelectedRoom(sel, floorIndex, clickX, clickY, canvas);
+        return;
+    }
+
     // Center component on click
     let newX = clickX - sel.length / 2;
     let newY = clickY - sel.width / 2;
@@ -265,6 +305,73 @@ function handleComponentMove(event, floorIndex) {
     drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
 }
 
+/**
+ * Finish moving or turning a circle or arc
+ * @param {object} room - Where it goes
+ * @returns {boolean} True if it could go there
+ */
+function commitRoomMove(sel, room, floors, canvas) {
+    const placement = shipData.componentPlacements[sel.componentIndex];
+    const pos = placement.floors[sel.placementIndex];
+
+    // Take the room out while checking, so it doesn't get in its own way
+    placement.floors.splice(sel.placementIndex, 1);
+    const blocked = !room || !isRoomClear(room, floors, -1);
+    placement.floors.splice(sel.placementIndex, 0, pos);
+
+    if (blocked) {
+        canvas.style.boxShadow = '0 0 20px red';
+        setTimeout(() => {
+            canvas.style.boxShadow = '';
+        }, 300);
+        return false;
+    }
+
+    const { floor, x, y, length, width } = room;
+    Object.assign(pos, { floor, x, y, length, width }, getRoomFields(room));
+    return true;
+}
+
+/**
+ * Move a selected circle or arc to a clicked position
+ */
+function moveSelectedRoom(sel, floorIndex, clickX, clickY, canvas) {
+    const requireHull = requiresHullAccess(shipData.components[sel.componentIndex]);
+    const room = positionRoom(getSelectedRoom(sel), [floorIndex], clickX, clickY, requireHull);
+    if (!commitRoomMove(sel, room, [floorIndex], canvas)) return;
+
+    uiState.selectedPlacement = null;
+    clearPreview();
+    canvas.classList.remove('selection-mode');
+    hideSelectionInstructions();
+
+    const { floorWidth, floorLength } = getCurrentFloorDimensions();
+    const oldCanvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
+    if (oldCanvas && sel.floorIndex !== floorIndex) {
+        drawFloorWithComponents(oldCanvas, sel.floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
+    }
+    drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
+}
+
+/**
+ * Turn a selected arc a quarter of the way around the wall. A circle looks the same
+ * however it is turned.
+ */
+function rotateSelectedRoom(sel, pos) {
+    if (pos.roomShape !== 'arc') return;
+    const canvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
+    if (!canvas || !commitRoomMove(sel, turnArcRoom(pos, Math.PI / 2), [sel.floorIndex], canvas)) return;
+
+    sel.length = pos.length;
+    sel.width = pos.width;
+    sel.originalX = pos.x;
+    sel.originalY = pos.y;
+
+    const { floorWidth, floorLength } = getCurrentFloorDimensions();
+    drawFloorWithComponents(canvas, sel.floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
+    drawRoomSelectionHighlight(canvas, pos, canvas.width / floorLength);
+}
+
 // ========================================
 // Component Rotation
 // ========================================
@@ -281,6 +388,11 @@ function rotateSelectedComponent() {
 
     const pos = placement.floors[sel.placementIndex];
     if (!pos) return;
+
+    if (pos.roomShape) {
+        rotateSelectedRoom(sel, pos);
+        return;
+    }
 
     // Calculate new rotated dimensions
     const newLength = sel.width;

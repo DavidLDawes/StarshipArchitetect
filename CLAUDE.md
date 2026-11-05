@@ -29,6 +29,7 @@ src/                # JavaScript source modules
   placement-geometry.js # Placement shapes/counts, free-space regions, fill planning
   hull-access.js    # Which components must touch the outer hull; hull snapping; exposed-hull fill planning
   hull-shapes.js    # Hull shape definitions and per-floor outlines: profiles, polygons, armor inset, fit checks, bands
+  curved-rooms.js   # Circle and arc rooms: outlines, overlap against any placement, positioning, size options
   rec-health.js     # Combine rec/health with staterooms: classification, overhead, per-floor distribution
   accommodations-panel.js # Combine toggle, staterooms + rec/health per-floor table, combined list entries
   layout-io.js      # Layout file format: serialize, parse/validate/migrate, tolerant restore by component key
@@ -47,8 +48,8 @@ src/                # JavaScript source modules
   floor-selector.js
 data/               # Sample CSV ship designs
 tests/              # Manual test HTML pages and JS test scripts
-  unit/             # Jest unit tests (csv-parser, floor-utils, component-dimensions, placement-logic, placement-geometry, hull-access, hull-shapes, rec-health, layout-io)
-  jest-setup.js     # Global stubs for shipData / uiState / constants; exposes floor-utils, placement-geometry, hull-access, rec-health, and layout-io helpers as globals
+  unit/             # Jest unit tests (csv-parser, floor-utils, component-dimensions, placement-logic, placement-geometry, hull-access, hull-shapes, curved-rooms, rec-health, layout-io)
+  jest-setup.js     # Global stubs for shipData / uiState / constants; exposes floor-utils, placement-geometry, hull-access, hull-shapes, curved-rooms, component-dimensions, rec-health, and layout-io helpers as globals
 docs/               # Implementation notes and design docs
 .github/workflows/  # CI: lint + test/coverage jobs on every push/PR
 jest.config.js      # Jest config (node env, coverage thresholds 70/70/55)
@@ -61,12 +62,13 @@ jest.config.js      # Jest config (node env, coverage thresholds 70/70/55)
 - Global state in `shipData` and `uiState` (defined in `src/app.js`)
 - Direct DOM manipulation via `document.getElementById()`
 - Imperative procedural style throughout
-- Testable modules (`csv-parser.js`, `floor-utils.js`, `component-dimensions.js`, `component-resize.js`, `placement-logic.js`, `placement-geometry.js`, `hull-access.js`, `hull-shapes.js`, `rec-health.js`, `layout-io.js`, `layout-export.js`) export via `if (typeof module !== 'undefined') { module.exports = {...}; }` so they load in both browsers (via `<script>`) and Jest (via `require()`)
+- Testable modules (`csv-parser.js`, `floor-utils.js`, `component-dimensions.js`, `component-resize.js`, `placement-logic.js`, `placement-geometry.js`, `hull-access.js`, `hull-shapes.js`, `curved-rooms.js`, `rec-health.js`, `layout-io.js`, `layout-export.js`) export via `if (typeof module !== 'undefined') { module.exports = {...}; }` so they load in both browsers (via `<script>`) and Jest (via `require()`)
 - Undo/redo history entries carry `type: 'place'`, `'delete'`, or `'fill'` so the handler knows whether to re-enter placement mode or simply restore/remove placements; `entry`/`entries` hold the placement objects themselves so counts and shapes survive undo/redo
 - Placement entries are `{floor, x, y, length, width}` plus optional `count` (items held, default 1) and `rects` (odd-shaped region; x/y/length/width is then its bounding box). Always go through `getPlacementRects()` / `getPlacedCount()` rather than reading `length`/`width` or `floors.length` directly
 - Region (`rects`) placements can be selected and deleted but not moved, rotated, or resized
+- Circles and arcs carry `roomShape` (`circle`, or `arc` with `arcAngle` and `arcArea`); x/y/length/width is their bounding box. An arc is the part of a round floor cut off by a straight line, so its curved side is the wall. Use `getRoomOutline()` for exact fit and overlap, and `placementsOverlap()` to compare any two entries; `getPlacementRects()` gives thin bands that can poke slightly past the outline, so use `getPlacementArea()` for area. They can be moved but not resized, and an arc can't move to a floor of a different radius. `getRoomShapeOptions()` offers them, separately from `getDeckDimensionOptions()`, which stays rectangles only for fill-exposed sizes
 - Fuel, cargo, spares, vacuum, data storage, and cold storage take irregular space (`canTakeIrregularSpace()`). They are placed by tonnage whatever their quantity: their entries carry `tons` and can be split across regions and floors. Use `getRemainingTons()` / `isComponentFullyPlaced()` for them rather than counts
-- Size options: use `getDeckDimensionOptions(component, floors)`, which fits the chosen floors on a shaped hull, rather than `generateComponentDimensionOptions()` directly
+- Size options: use `getDeckDimensionOptions(component, floors)`, which fits the chosen floors on a shaped hull, rather than `generateComponentDimensionOptions()` directly. Dropdown values are `length,width`, or for curved shapes what `parseRoomChoice()` reads
 - Armor boundary: `shipData.armorThickness` meters on all walls of each floor; components must stay within the inner usable area. Floors can be any convex shape, so go through the floor-aware helpers `fitsFloor()` / `clampToFloor()` (placement-logic.js) and `getFloorUsableBounds()` / `getShapedInner()` (hull-access.js) rather than working from `floorLength`, `floorWidth`, and armor. They take a floor number, or an array for a component spanning several floors, which has to fit the space those floors share. On a rectangular ship they behave exactly like the plain functions
 - Hull rule: components where `requiresHullAccess(component)` is true (weapons, defenses, vehicles, launch bays/hangars) must touch the inner armor face; on a curved or sloping wall a touching corner counts. Every path that sets a position (click placement, drag preview, move, rotate, resize, fill) must keep `touchesFloorHull()` true; use `snapToFloorHull()` and `findValidPosition(..., requireHull, fitFloors)`. Their bulk modes are single / block / fill-exposed instead of fill-floor / fill-region
 - Free regions on a curved or sloping floor are built from bands that can poke slightly past the wall (`getOutsideHullRects()`), so draw them inside `clipToFloorHull()`. A region placement that pokes past the wall keeps `rects` even if it is a single rectangle, so it can't be moved or resized
