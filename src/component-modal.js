@@ -9,11 +9,62 @@
  * - undo-redo.js (history management)
  * - bulk-allocation.js (block / fill-floor / fill-region / fill-exposed allocation modes)
  * - hull-access.js (requiresHullAccess: weapons, vehicles, launch bays go on the hull)
+ * - curved-rooms.js (circle and arc size options)
  */
 
 // ========================================
 // Modal Management
 // ========================================
+
+/**
+ * Fill the size dropdown with rectangles and curved shapes
+ * @param {HTMLSelectElement} dimSelect
+ * @param {Array<object>} options - From getDeckDimensionOptions and getRoomShapeOptions
+ */
+function fillDimensionSelect(dimSelect, options) {
+    dimSelect.innerHTML = '';
+    for (const opt of options) {
+        const option = document.createElement('option');
+        option.value = opt.value || `${opt.length},${opt.width}`;
+        option.textContent = opt.label;
+        dimSelect.appendChild(option);
+    }
+}
+
+/**
+ * Floors chosen in the dialog
+ * @returns {number[]} Floor numbers, which can be none or not numbers yet
+ */
+function getModalSelectedFloors() {
+    const modal = document.getElementById('component-modal');
+    if (modal.dataset.isMultiFloor === 'true' && getAllocationMode() !== 'block') {
+        return Array.from(document.querySelectorAll('input[name="component-floors"]:checked'))
+            .map(cb => parseInt(cb.value, 10));
+    }
+    return [parseInt(document.getElementById('component-floor-select').value, 10)];
+}
+
+/**
+ * An arc is cut to its floor's radius, so choosing one of another radius moves to a
+ * floor that size
+ */
+function moveFloorsToRoomChoice() {
+    const dimSelect = document.getElementById('component-dimensions');
+    const choice = parseRoomChoice(dimSelect.value);
+    if (!choice || choice.roomShape !== 'arc') return;
+
+    const floors = getFloorsWithRadius(choice.radius);
+    if (floors.length === 0 || getModalSelectedFloors().every(f => floors.includes(f))) return;
+
+    const value = dimSelect.value;
+    document.getElementById('component-floor-select').value = floors[0];
+    document.querySelectorAll('input[name="component-floors"]').forEach(checkbox => {
+        checkbox.checked = parseInt(checkbox.value, 10) === floors[0];
+    });
+    if (getAllocationMode() === 'block') updateAllocationUI();
+    else updateDimensionOptions();
+    dimSelect.value = value;
+}
 
 /**
  * Update dimension options and area display based on selected floors
@@ -26,13 +77,7 @@ function updateDimensionOptions() {
     if (!component) return;
 
     // Get selected floors
-    let selectedFloors;
-    if (modal.dataset.isMultiFloor === 'true') {
-        selectedFloors = Array.from(document.querySelectorAll('input[name="component-floors"]:checked'))
-            .map(cb => parseInt(cb.value, 10));
-    } else {
-        selectedFloors = [parseInt(document.getElementById('component-floor-select').value, 10)];
-    }
+    let selectedFloors = getModalSelectedFloors();
 
     // Need at least 1 floor selected
     if (selectedFloors.length === 0 || selectedFloors.some(isNaN)) {
@@ -41,29 +86,20 @@ function updateDimensionOptions() {
     const numSelectedFloors = selectedFloors.length;
 
     // Recalculate dimensions with selected floors
-    const dimInfo = getDeckDimensionOptions(
-        getPlacementTarget(component, shipData.componentPlacements[componentIndex]),
-        selectedFloors,
-        numSelectedFloors
-    );
+    const target = getPlacementTarget(component, shipData.componentPlacements[componentIndex]);
+    const dimInfo = getDeckDimensionOptions(target, selectedFloors, numSelectedFloors);
+    const options = dimInfo.options.concat(getRoomShapeOptions(target, selectedFloors, numSelectedFloors));
 
     // Update dimension dropdown
-    const dimSelect = document.getElementById('component-dimensions');
-    dimSelect.innerHTML = '';
-    for (const opt of dimInfo.options) {
-        const option = document.createElement('option');
-        option.value = `${opt.length},${opt.width}`;
-        option.textContent = opt.label;
-        dimSelect.appendChild(option);
-    }
+    fillDimensionSelect(document.getElementById('component-dimensions'), options);
 
     // Say why there is nothing to choose, rather than offering nothing
     const note = document.getElementById('dimensions-note');
-    if (dimInfo.options.length === 0) {
+    if (options.length === 0) {
         const floorText = numSelectedFloors === 1
             ? `Floor ${selectedFloors[0]}`
             : `the space shared by floors ${selectedFloors.join(', ')}`;
-        note.textContent = `No rectangle of ${dimInfo.areaPerFloor.toFixed(1)} m² fits ${floorText}. ` +
+        note.textContent = `Nothing of ${dimInfo.areaPerFloor.toFixed(1)} m² fits ${floorText}. ` +
             (modal.dataset.isMultiFloor === 'true' ? 'Try other floors, or span more floors.' : 'Try a larger floor.') +
             (canTakeIrregularSpace(component) ? ' Or fill free space instead, which can take any shape.' : '');
         note.classList.remove('hidden');
@@ -273,9 +309,10 @@ function startPlacement() {
 
     const dimSelect = document.getElementById('component-dimensions');
     const dimValue = dimSelect.value;
+    const room = parseRoomChoice(dimValue);
     const parts = dimValue.split(',');
-    const length = parseFloat(parts[0]);
-    const width = parseFloat(parts[1]);
+    const length = room ? room.length : parseFloat(parts[0]);
+    const width = room ? room.width : parseFloat(parts[1]);
 
     if (isNaN(length) || isNaN(width) || length <= 0 || width <= 0) {
         alert('Invalid dimensions selected. Please select valid dimensions.');
@@ -315,7 +352,8 @@ function startPlacement() {
         count: blockCount,
         floors: selectedFloors,
         currentFloorIndex: 0,
-        isMultiFloor: isMultiFloor
+        isMultiFloor: isMultiFloor,
+        ...room
     };
 
     // Auto-select the first floor in the floor selector dropdown

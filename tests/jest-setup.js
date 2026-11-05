@@ -29,6 +29,7 @@ Object.assign(global, require('../src/floor-utils'));
 Object.assign(global, require('../src/placement-geometry'));
 Object.assign(global, require('../src/hull-access'));
 Object.assign(global, require('../src/hull-shapes'));
+Object.assign(global, require('../src/curved-rooms'));
 Object.assign(global, require('../src/component-dimensions'));
 Object.assign(global, require('../src/rec-health'));
 Object.assign(global, require('../src/layout-io'));

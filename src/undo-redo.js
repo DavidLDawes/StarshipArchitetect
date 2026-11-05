@@ -118,12 +118,22 @@ function undoLastPlacement() {
     uiState.isPlacingComponent = true;
     uiState.placementData = { componentIndex, length, width, count, floors: allFloors, currentFloorIndex: 0 };
 
+    // A circle or arc goes back to being placed as the same shape
+    const entry = action.entry;
+    if (entry && entry.roomShape) {
+        Object.assign(uiState.placementData, getRoomFields(entry));
+        if (entry.roomShape === 'arc') {
+            uiState.placementData.radius = getArcRadius(floor);
+            uiState.placementData.floors = getFloorsForRoom(entry, floor);
+        }
+    }
+
     for (const f of allFloors) {
         const c = document.getElementById(`floor-canvas-${f}`);
         if (c) {
             drawFloorWithComponents(c, f, floorLength, floorWidth,
                 shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
-            c.classList.add('placement-mode');
+            if (uiState.placementData.floors.includes(f)) c.classList.add('placement-mode');
         }
     }
 

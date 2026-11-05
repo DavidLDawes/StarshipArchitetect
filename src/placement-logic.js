@@ -87,6 +87,12 @@ function checkOverlap(floorIndex, x, y, length, width, excludeComponentIndex = -
         for (const pos of placement.floors) {
             if (pos.floor !== floorIndex) continue;
 
+            // Circles and arcs are checked against their true outline
+            if (pos.roomShape) {
+                if (placementsOverlap({ x, y, length, width }, pos, placement, OVERLAP_EPS)) return true;
+                continue;
+            }
+
             // A placement may be a single rectangle or an odd-shaped set of rectangles
             for (const r of getPlacementRects(pos, placement)) {
                 const overlap = !(x + length <= r.x + OVERLAP_EPS ||

@@ -148,12 +148,13 @@ function exportLayoutSvg(ship, options = {}) {
             out.push(`      <clipPath id="${clipId}"><path d="${polygonPath(floorShape.inner)}"/></clipPath>`);
         }
 
-        // Placements on this floor
-        ship.components.forEach((component, ci) => {
+        // Placements on this floor. Circles and arcs go on top, as a free region
+        // next to one can poke slightly into it.
+        const exportPlacements = wantRooms => ship.components.forEach((component, ci) => {
             const placement = ship.componentPlacements[ci];
             if (!placement || !placement.floors) return;
             placement.floors.forEach(pos => {
-                if (pos.floor !== f) return;
+                if (pos.floor !== f || !!pos.roomShape !== wantRooms) return;
                 const rects = getPlacementRects(pos, placement);
                 const count = getPlacementCount(pos);
                 const colors = exportColors(ci);
@@ -161,12 +162,20 @@ function exportLayoutSvg(ship, options = {}) {
                 const tons = pos.tons > 0 ? pos.tons : (component.tonsPerItem || component.tons) * count;
                 const attrs = `data-component="${escapeXml(keys[ci])}" data-category="${escapeXml(component.category || '')}" ` +
                     `data-count="${count}"`;
-                const tip = `${label} — ${svgNum(tons)} t, ${svgNum(rects.reduce((s, r) => s + r.length * r.width, 0))} m²`;
+                const tip = `${label} — ${svgNum(tons)} t, ${svgNum(getPlacementArea(pos, placement))} m²`;
 
                 const clip = clipRegions && pos.rects && pos.rects.length > 0 ? ` clip-path="url(#${clipId})"` : '';
                 out.push(`      <g class="placement" ${attrs}${clip}>`);
                 out.push(`        <title>${escapeXml(tip)}</title>`);
-                for (const r of rects) {
+                if (pos.roomShape === 'circle') {
+                    const radius = pos.length / 2;
+                    out.push(`        <circle cx="${svgNum(pos.x + radius)}" cy="${svgNum(pos.y + radius)}" r="${svgNum(radius)}" ` +
+                        `fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="0.08"/>`);
+                } else if (pos.roomShape) {
+                    out.push(`        <path d="${polygonPath(getRoomOutline(pos))}" ` +
+                        `fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="0.08"/>`);
+                }
+                for (const r of pos.roomShape ? [] : rects) {
                     out.push(`        <rect x="${svgNum(r.x)}" y="${svgNum(r.y)}" width="${svgNum(r.length)}" height="${svgNum(r.width)}" ` +
                         `fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="0.08"/>`);
                 }
@@ -189,6 +198,8 @@ function exportLayoutSvg(ship, options = {}) {
                 out.push('      </g>');
             });
         });
+        exportPlacements(false);
+        exportPlacements(true);
         out.push('    </g>');
         out.push('  </g>');
     });

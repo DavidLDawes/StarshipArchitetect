@@ -12,6 +12,7 @@
  *                                                  are its bounding box
  * Components that can take irregular space (fuel, cargo...: see component-dimensions.js)
  * are placed by tonnage, so their entries also carry `tons`.
+ * Circles and arcs carry `roomShape` and more: see curved-rooms.js.
  *
  * Free space is computed on a coordinate-compressed grid: every armor edge and
  * component edge on the floor becomes a grid line, so each grid cell is either
@@ -54,6 +55,7 @@ const MIN_FILL_AREA = 0.05;
  * @returns {Array<{x, y, length, width}>} Rectangles in absolute floor coordinates
  */
 function getPlacementRects(pos, placement) {
+    if (pos.roomShape) return getRoomRects(pos);
     if (pos.rects && pos.rects.length > 0) {
         return pos.rects;
     }
@@ -63,6 +65,16 @@ function getPlacementRects(pos, placement) {
         length: pos.length || (placement && placement.length),
         width: pos.width || (placement && placement.width)
     }];
+}
+
+/**
+ * Floor area of a placement entry
+ * @param {object} pos - Placement entry
+ * @param {object} placement - Parent placement (for legacy component-level dimensions)
+ * @returns {number} Area in m²
+ */
+function getPlacementArea(pos, placement) {
+    return pos.roomShape ? getRoomArea(pos) : sumRectArea(getPlacementRects(pos, placement));
 }
 
 /**
@@ -106,7 +118,7 @@ function getPlacedCountByFloor(placement) {
  */
 function getEntryTons(pos) {
     if (pos.tons > 0) return pos.tons;
-    return sumRectArea(getPlacementRects(pos)) * shipData.ceilingHeight / SQM_PER_TON;
+    return getPlacementArea(pos) * shipData.ceilingHeight / SQM_PER_TON;
 }
 
 /**
@@ -624,7 +636,14 @@ function planAreaFill(regions, neededArea) {
  * @returns {number} Area in m²
  */
 function getFloorUsedArea(floorIndex, placements = shipData.componentPlacements) {
-    return sumRectArea(getOccupiedRects(floorIndex, placements));
+    let area = 0;
+    for (const placement of Object.values(placements)) {
+        if (!placement || !placement.floors) continue;
+        for (const pos of placement.floors) {
+            if (pos.floor === floorIndex) area += getPlacementArea(pos, placement);
+        }
+    }
+    return area;
 }
 
 /**
@@ -655,6 +674,7 @@ if (typeof module !== 'undefined') {
         GEOM_EPS,
         MIN_PASSAGE,
         getPlacementRects,
+        getPlacementArea,
         getPlacementCount,
         getPlacedCount,
         getPlacedCountByFloor,
