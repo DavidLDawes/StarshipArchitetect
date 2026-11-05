@@ -17,7 +17,7 @@
  * The wedge's rear edges line up at x = length, so its bow is toward x = 0.
  *
  * Dependencies (globals in the browser, required in Jest via jest-setup):
- * - floor-utils.js (calculateTotalFloorArea, calculateDefaultFloorLength)
+ * - floor-utils.js (calculateTotalFloorArea, calculateDefaultFloorLength, calculateArmorThickness)
  */
 
 // ========================================
@@ -574,9 +574,7 @@ function buildFloorGeometry({ shape, totalTons, ceilingHeight, numFloors, length
     const totalPerimeter = perimeters.reduce((sum, p) => sum + p, 0);
 
     // Armor is one even layer on the walls of every floor
-    const armorThickness = armorTons > 0 && totalPerimeter > 0
-        ? (armorTons * SQM_PER_TON) / (ceilingHeight * totalPerimeter)
-        : 0;
+    const armorThickness = calculateArmorThickness(armorTons, totalPerimeter, ceilingHeight);
     const inset = definition.isRectangle ? insetRectanglePolygon : insetConvexPolygon;
 
     const floors = frame.outlines.map((outline, i) => {

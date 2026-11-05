@@ -18,6 +18,7 @@ let shipData = {
     totalCost: 0,
     components: [],
     configuration: { general: 'standard', shape: 'rectangular', text: '' }, // From the design file (csv-parser.js)
+    hullShape: 'rectangular', // Shape floors are built with (hull-shapes.js); stays rectangular until placement checks handle every shape
     armorTons: 0,           // Total armor tonnage
     armorThickness: 0,      // Armor thickness in meters (calculated per floor)
     numFloors: 4,
@@ -171,6 +172,8 @@ function renderFloors() {
 
     elements.floorList.innerHTML = '';
 
+    const unusableFloors = getUnusableFloors();
+
     for (let i = 1; i <= shipData.numFloors; i++) {
         const floorItem = document.createElement('div');
         floorItem.className = 'floor-item';
@@ -183,6 +186,7 @@ function renderFloors() {
             <div class="floor-details">
                 <div class="floor-name">Floor ${i}</div>
                 <div class="floor-dimensions">${floorLength} × ${floorWidth.toFixed(1)} meters, ${shipData.ceilingHeight} meters tall</div>
+                ${unusableFloors.includes(i) ? '<div class="floor-warning">⚠️ No usable space: the armor fills this floor</div>' : ''}
             </div>
         `;
         floorItem.appendChild(floorInfo);
@@ -396,13 +400,8 @@ function loadCsvFromString(csvString, source = 'unknown', filename = '') {
         shipData.combineRecHealth = false; // New components start uncombined
         shipData.originalCsv = csvString; // Preserve raw CSV so share URL round-trips correctly
 
-        // Calculate default floor length
-        const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
-        const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
-        shipData.floorLength = calculateDefaultFloorLength(floorArea);
-
-        // Calculate armor thickness per floor
-        shipData.armorThickness = calculateArmorThickness(armorTons, shipData.numFloors, shipData.floorLength, floorArea, shipData.ceilingHeight);
+        // Default floor length and armor thickness
+        recalculateFloors({ resetLength: true });
 
         // Show sections and refresh UI
         showSections();
@@ -556,13 +555,8 @@ elements.csvInput.addEventListener('change', function (event) {
 elements.floorSlider.addEventListener('input', function (event) {
     shipData.numFloors = parseInt(event.target.value, 10);
 
-    // Recalculate default floor length
-    const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
-    const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
-    shipData.floorLength = calculateDefaultFloorLength(floorArea);
-
-    // Recalculate armor thickness
-    shipData.armorThickness = calculateArmorThickness(shipData.armorTons, shipData.numFloors, shipData.floorLength, floorArea, shipData.ceilingHeight);
+    // Default floor length and armor thickness for the new floor count
+    recalculateFloors({ resetLength: true });
 
     // Clear placements when floor count changes
     shipData.componentPlacements = {};
@@ -577,11 +571,7 @@ elements.floorLength.addEventListener('input', function (event) {
     const value = parseFloat(event.target.value);
     if (value >= 5) {
         shipData.floorLength = value;
-
-        // Recalculate armor thickness
-        const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
-        const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
-        shipData.armorThickness = calculateArmorThickness(shipData.armorTons, shipData.numFloors, shipData.floorLength, floorArea, shipData.ceilingHeight);
+        recalculateFloors();
 
         // Clear placements when dimensions change
         shipData.componentPlacements = {};
@@ -596,11 +586,7 @@ elements.ceilingHeight.addEventListener('input', function (event) {
     const value = parseFloat(event.target.value);
     if (value >= 2 && value <= 10) {
         shipData.ceilingHeight = value;
-
-        // Recalculate armor thickness
-        const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
-        const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
-        shipData.armorThickness = calculateArmorThickness(shipData.armorTons, shipData.numFloors, shipData.floorLength, floorArea, shipData.ceilingHeight);
+        recalculateFloors();
 
         // Clear placements when dimensions change
         shipData.componentPlacements = {};
@@ -616,13 +602,11 @@ elements.floorDimensions.addEventListener('change', function (event) {
     if (selectedLength >= 5) {
         shipData.floorLength = selectedLength;
         elements.floorLength.value = selectedLength;
+        recalculateFloors();
 
         // Recalculate width
-        const { floorWidth, floorArea } = getCurrentFloorDimensions();
+        const { floorWidth } = getCurrentFloorDimensions();
         elements.floorWidth.textContent = floorWidth.toFixed(1);
-
-        // Recalculate armor thickness
-        shipData.armorThickness = calculateArmorThickness(shipData.armorTons, shipData.numFloors, shipData.floorLength, floorArea, shipData.ceilingHeight);
 
         // Clear placements when dimensions change
         shipData.componentPlacements = {};

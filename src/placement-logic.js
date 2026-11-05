@@ -8,6 +8,13 @@
 // ========================================
 
 /**
+ * Fit tolerance in meters. Size presets can exactly fill the usable area, and
+ * armor + (floorLength - 2 * armor) can drift past floorLength - armor by ~1e-15
+ * in floating point; without a tolerance an exact fit is rejected as too big.
+ */
+const USABLE_AREA_EPS = 1e-6;
+
+/**
  * Check if a placement is within the usable area (respecting armor boundary)
  * @param {number} x - X position in meters
  * @param {number} y - Y position in meters
@@ -20,10 +27,10 @@
  */
 function isWithinUsableArea(x, y, length, width, floorLength, floorWidth, armorThickness = shipData.armorThickness) {
     // Check if component is fully inside the armor boundary
-    return x >= armorThickness &&
-           y >= armorThickness &&
-           x + length <= floorLength - armorThickness &&
-           y + width <= floorWidth - armorThickness;
+    return x >= armorThickness - USABLE_AREA_EPS &&
+           y >= armorThickness - USABLE_AREA_EPS &&
+           x + length <= floorLength - armorThickness + USABLE_AREA_EPS &&
+           y + width <= floorWidth - armorThickness + USABLE_AREA_EPS;
 }
 
 // ========================================

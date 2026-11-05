@@ -153,10 +153,7 @@ function handleCanvasMouseMove(event, floorIndex) {
     const scaleY = canvas.height / rect.height;
 
     // Calculate floor dimensions
-    const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
-    const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
-    const floorWidth = calculateFloorWidth(floorArea, shipData.floorLength);
-    const floorLength = shipData.floorLength;
+    const { floorWidth, floorLength } = getCurrentFloorDimensions();
     const pixelsPerMeter = canvas.width / floorLength;
 
     // Get mouse position in pixels
@@ -221,10 +218,8 @@ function handleCanvasMouseLeave(event, floorIndex) {
 
         // Redraw floor without preview
         const canvas = event.target;
-        const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
-        const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
-        const floorWidth = calculateFloorWidth(floorArea, shipData.floorLength);
-        drawFloorWithComponents(canvas, floorIndex, shipData.floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
+        const { floorWidth, floorLength } = getCurrentFloorDimensions();
+        drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
     }
 }
 

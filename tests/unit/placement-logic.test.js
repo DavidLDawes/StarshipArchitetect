@@ -1,10 +1,15 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const {
   isWithinUsableArea,
   checkOverlap,
   findValidPosition
 } = require('../../src/placement-logic');
+const { parseCSV } = require('../../src/csv-parser');
+const { generateComponentDimensionOptions } = require('../../src/component-dimensions');
+const { recalculateFloors, getCurrentFloorDimensions } = require('../../src/floor-utils');
 
 beforeEach(() => {
   global.shipData.componentPlacements = {};
@@ -343,5 +348,67 @@ describe('checkOverlap with region placements', () => {
     const pos = findValidPosition(1, 1, 1, 3, 3, 30, 20, -1);
     expect(pos).not.toBeNull();
     expect(checkOverlap(1, pos.x, pos.y, 3, 3)).toBe(false);
+  });
+});
+
+// ============================================================
+// Size presets on armored ships
+// ============================================================
+
+describe('size presets on armored ships', () => {
+  afterAll(() => {
+    Object.assign(global.shipData, {
+      totalTons: 1000, armorTons: 0, armorThickness: 0, numFloors: 4, floorLength: 30, ceilingHeight: 2.5,
+    });
+  });
+
+  test('a size that exactly fills the usable area fits despite rounding error', () => {
+    // Real values from a Heavy Fighter with one 23 m floor: the sum lands just past the limit
+    const armor = 0.7013552758954501;
+    const length = 23 - 2 * armor;
+    expect(armor + length).toBeGreaterThan(23 - armor);
+    expect(isWithinUsableArea(armor, armor, length, 1.6, 23, 21.9, armor)).toBe(true);
+  });
+
+  test('a size clearly past the armor still does not fit', () => {
+    expect(isWithinUsableArea(2, 2, 26.001, 16, 30, 20, 2)).toBe(false);
+    expect(isWithinUsableArea(2, 2, 26, 16.001, 30, 20, 2)).toBe(false);
+    expect(isWithinUsableArea(1.999, 2, 5, 5, 30, 20, 2)).toBe(false);
+    expect(isWithinUsableArea(2, 1.999, 5, 5, 30, 20, 2)).toBe(false);
+  });
+
+  // Armor tonnage is made up for the ships whose sample files have none
+  test.each([
+    ['Heavy_Fighter', 11.25],
+    ['Courier', 6],
+    ['sample-ship', 30],
+    ['transport', 100],
+  ])('every preset for %s fits on an empty floor, flush against the armor', (file, armorTons) => {
+    const csv = fs.readFileSync(path.join(__dirname, '../../data', file + '.csv'), 'utf8');
+    const { components, totalTons } = parseCSV(csv, file);
+    const parts = components.filter(c => c.tons > 0 && !/hull|armor/i.test(c.category));
+    let presets = 0;
+
+    for (const numFloors of [1, 2, 3, 4, 5, 6, 8]) {
+      for (const length of [null, 13, 17.5, 23, 37, 41.3]) {
+        Object.assign(global.shipData, { totalTons, armorTons, numFloors, ceilingHeight: 2.5, componentPlacements: {} });
+        if (length) global.shipData.floorLength = length;
+        recalculateFloors({ resetLength: !length });
+        const { floorArea, floorLength, floorWidth } = getCurrentFloorDimensions();
+        const armor = global.shipData.armorThickness;
+
+        for (const component of parts) {
+          const { options } = generateComponentDimensionOptions(component, floorArea, floorLength, floorWidth);
+          for (const option of options) {
+            presets++;
+            const position = findValidPosition(1, armor, armor, option.length, option.width, floorLength, floorWidth, -1);
+            if (!position) {
+              throw new Error(`${component.item} ${option.label} does not fit: floor ${floorLength} × ${floorWidth}, armor ${armor}`);
+            }
+          }
+        }
+      }
+    }
+    expect(presets).toBeGreaterThan(100);
   });
 });

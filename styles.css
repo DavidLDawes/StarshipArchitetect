@@ -524,6 +524,12 @@ body {
     font-size: 0.9rem;
 }
 
+.floor-warning {
+    color: var(--color-warning);
+    font-size: 0.9rem;
+    margin-top: var(--spacing-xs);
+}
+
 /* Floor Canvas */
 .floor-canvas-container {
     width: 100%;

@@ -139,52 +139,101 @@ function generateDimensionOptionsWithStep(floorArea, step) {
 }
 
 /**
- * Calculate armor thickness per floor
- * Armor is distributed as a uniform layer on the exterior walls of each floor
+ * Calculate armor thickness
+ * Armor is one even layer on the walls of every floor, so its volume is spread
+ * over the total length of wall on the ship
  * @param {number} totalArmorTons - Total armor tonnage
- * @param {number} numFloors - Number of floors
- * @param {number} floorLength - Floor length in meters
- * @param {number} floorArea - Floor area in square meters
+ * @param {number} totalPerimeter - Combined perimeter of all floors in meters
  * @param {number} ceilingHeight - Ceiling height in meters
  * @returns {number} Armor thickness in meters
  */
-function calculateArmorThickness(totalArmorTons, numFloors, floorLength, floorArea, ceilingHeight) {
-    if (totalArmorTons <= 0 || numFloors <= 0) {
+function calculateArmorThickness(totalArmorTons, totalPerimeter, ceilingHeight) {
+    if (totalArmorTons <= 0 || totalPerimeter <= 0) {
         return 0;
     }
+    return (totalArmorTons * SQM_PER_TON) / (totalPerimeter * ceilingHeight);
+}
 
-    // Armor per floor
-    const armorTonsPerFloor = totalArmorTons / numFloors;
+// ========================================
+// Current Ship
+// ========================================
 
-    // Volume of armor per floor (m³)
-    const armorVolumePerFloor = armorTonsPerFloor * SQM_PER_TON;
+/** Last geometry built by getShipGeometry() and the settings it was built from */
+let shipGeometryCache = null;
+let shipGeometryCacheKey = '';
 
-    // Floor width
-    const floorWidth = floorArea / floorLength;
+/**
+ * Floor geometry for the current ship (see buildFloorGeometry in hull-shapes.js).
+ * This runs on every mouse move during a drag, so the result is kept until a
+ * setting it depends on changes.
+ * @returns {object} { shape, length, width, totalArea, armorThickness, floors }
+ */
+function getShipGeometry() {
+    const { hullShape, totalTons, ceilingHeight, numFloors, floorLength, armorTons } = shipData;
+    const key = [hullShape, totalTons, ceilingHeight, numFloors, floorLength, armorTons].join('|');
+    if (key !== shipGeometryCacheKey || !shipGeometryCache) {
+        shipGeometryCache = buildFloorGeometry({
+            shape: hullShape,
+            totalTons,
+            ceilingHeight,
+            numFloors,
+            length: floorLength,
+            armorTons
+        });
+        shipGeometryCacheKey = key;
+    }
+    return shipGeometryCache;
+}
 
-    // Perimeter of floor
-    const perimeter = 2 * (floorLength + floorWidth);
+/**
+ * Geometry of one floor of the current ship
+ * @param {number} floorIndex - Floor number (1 is the bottom deck)
+ * @returns {object|null} See buildFloorGeometry, or null if there is no such floor
+ */
+function getFloorGeometry(floorIndex) {
+    return getShipGeometry().floors[floorIndex - 1] || null;
+}
 
-    // Armor thickness = volume / (perimeter * height)
-    const thickness = armorVolumePerFloor / (perimeter * ceilingHeight);
+/**
+ * Floors the armor leaves with no usable space
+ * @returns {number[]} Floor numbers
+ */
+function getUnusableFloors() {
+    return getShipGeometry().floors.filter(f => f.inner.length === 0).map(f => f.floor);
+}
 
-    return thickness;
+/**
+ * Bring the floor length and armor thickness in line with the ship's settings.
+ * Call this after changing the tonnage, floor count, ceiling height, floor
+ * length, armor, or hull shape.
+ * @param {object} options
+ * @param {boolean} options.resetLength - Go back to the shape's default length
+ */
+function recalculateFloors({ resetLength = false } = {}) {
+    if (resetLength) {
+        const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
+        const length = getDefaultHullLength(shipData.hullShape, totalArea, shipData.numFloors);
+        if (length !== null) shipData.floorLength = length;
+    }
+    const geometry = getShipGeometry();
+    // Some shapes set their own length from their area
+    shipData.floorLength = geometry.length;
+    shipData.armorThickness = geometry.armorThickness;
 }
 
 /**
  * Get current floor dimensions from global shipData
- * Centralizes the repeated calculation pattern used throughout the codebase
+ * floorLength and floorWidth are the frame all floors share: the box that holds
+ * the largest floor outlines
  * @returns {Object} Object containing { totalArea, floorArea, floorWidth, floorLength }
  */
 function getCurrentFloorDimensions() {
-    const totalArea = calculateTotalFloorArea(shipData.totalTons, shipData.ceilingHeight);
-    const floorArea = calculateFloorArea(totalArea, shipData.numFloors);
-    const floorWidth = calculateFloorWidth(floorArea, shipData.floorLength);
+    const { totalArea, length, width } = getShipGeometry();
     return {
         totalArea,
-        floorArea,
-        floorWidth,
-        floorLength: shipData.floorLength
+        floorArea: calculateFloorArea(totalArea, shipData.numFloors),
+        floorWidth: width,
+        floorLength: length
     };
 }
 
@@ -198,6 +247,10 @@ if (typeof module !== 'undefined') {
         generateDimensionOptions,
         generateDimensionOptionsWithStep,
         calculateArmorThickness,
+        getShipGeometry,
+        getFloorGeometry,
+        getUnusableFloors,
+        recalculateFloors,
         getCurrentFloorDimensions,
     };
 }
