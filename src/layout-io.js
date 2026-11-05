@@ -15,6 +15,7 @@
  * - hull-access.js (getHullBounds, requiresHullAccess, getShapedInner, touchesFloorHull)
  * - hull-shapes.js (HULL_BAND_STEP, isRectInConvexPolygon, resolveHullShape)
  * - floor-utils.js (getFloorGeometry)
+ * - component-dimensions.js (canTakeIrregularSpace)
  */
 
 // ========================================
@@ -22,7 +23,10 @@
 // ========================================
 
 const LAYOUT_FORMAT = 'starship-architect-layout';
-const LAYOUT_VERSION = 2;
+const LAYOUT_VERSION = 3;
+
+/** Tons over a component's total that count as rounding when restoring */
+const LAYOUT_TONS_EPS = 0.01;
 
 /** Tolerance (meters) for bounds and overlap checks */
 const LAYOUT_EPS = 1e-6;
@@ -94,6 +98,7 @@ function serializeEntry(pos, placement) {
         width: pos.width || (placement && placement.width)
     };
     if (getPlacementCount(pos) > 1) out.count = getPlacementCount(pos);
+    if (pos.tons > 0) out.tons = pos.tons;
     if (pos.rects && pos.rects.length > 0) {
         out.rects = rects.map(r => ({ x: r.x, y: r.y, length: r.length, width: r.width }));
     }
@@ -155,15 +160,18 @@ const isNum = v => typeof v === 'number' && isFinite(v);
  * Upgrade older layouts to the current version.
  * Version 1 didn't record a hull shape, and its rooms were laid out on rectangular
  * floors, so it stays rectangular even if its design file now names a shape.
+ * Version 3 adds `tons` to entries placed by tonnage. An entry without it is worked
+ * out from its floor area, so version 2 needs no changes.
  * @param {object} layout
  * @returns {object}
  */
 function migrateLayout(layout) {
-    if (layout.version >= 2) return layout;
-    const floors = layout.floors && typeof layout.floors === 'object'
-        ? { ...layout.floors, shape: 'rectangular' }
-        : layout.floors;
-    return { ...layout, version: 2, floors };
+    if (layout.version >= LAYOUT_VERSION) return layout;
+    let floors = layout.floors;
+    if (layout.version < 2 && floors && typeof floors === 'object') {
+        floors = { ...floors, shape: 'rectangular' };
+    }
+    return { ...layout, version: LAYOUT_VERSION, floors };
 }
 
 /**
@@ -242,6 +250,10 @@ function cleanEntry(raw) {
     if (raw.count !== undefined) {
         if (!Number.isInteger(raw.count) || raw.count < 1) return null;
         if (raw.count > 1) entry.count = raw.count;
+    }
+    if (raw.tons !== undefined) {
+        if (!isNum(raw.tons) || raw.tons <= 0) return null;
+        entry.tons = raw.tons;
     }
     if (raw.rects !== undefined) {
         if (!Array.isArray(raw.rects) || raw.rects.length === 0) return null;
@@ -356,7 +368,9 @@ function restorePlacements(layout, components, floor) {
         const name = component.item;
         const quantity = component.quantity || 1;
         const hull = requiresHullAccess(component);
+        const byTons = canTakeIrregularSpace(component);
         let placedItems = 0;
+        let placedTons = 0;
         const kept = [];
 
         entries.forEach((raw, ei) => {
@@ -388,6 +402,39 @@ function restorePlacements(layout, components, floor) {
             if (rects.some(r => others.some(o => rectsOverlap(r, o)))) {
                 problems.push(`${where} (floor ${entry.floor}) overlaps another component.`);
                 dropped++;
+                return;
+            }
+
+            if (byTons) {
+                let tons = getEntryTons(entry);
+                const tonsLeft = component.tons - placedTons;
+                if (tons > tonsLeft + LAYOUT_TONS_EPS) {
+                    if (tonsLeft <= LAYOUT_TONS_EPS) {
+                        problems.push(`${where} was skipped: all ${component.tons} tons of ${name} are already placed.`);
+                        dropped++;
+                        return;
+                    }
+                    problems.push(`${where} held ${tons.toFixed(1)} tons; only ${tonsLeft.toFixed(1)} remain in the design, so it now holds ${tonsLeft.toFixed(1)}.`);
+                    tons = tonsLeft;
+                }
+                entry.tons = tons;
+                delete entry.count;
+                placedTons += entry.tons;
+                kept.push(entry);
+                restoredRects[entry.floor] = others.concat(rects);
+                restored++;
+                return;
+            }
+            delete entry.tons;
+
+            // One item spanning floors is saved as an entry per floor, in the same spot
+            const spansFloors = quantity === 1 && kept.some(k => k.floor !== entry.floor &&
+                Math.abs(k.x - entry.x) <= LAYOUT_EPS && Math.abs(k.y - entry.y) <= LAYOUT_EPS &&
+                Math.abs(k.length - entry.length) <= LAYOUT_EPS && Math.abs(k.width - entry.width) <= LAYOUT_EPS);
+            if (spansFloors) {
+                kept.push(entry);
+                restoredRects[entry.floor] = others.concat(rects);
+                restored++;
                 return;
             }
 

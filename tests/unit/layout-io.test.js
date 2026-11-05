@@ -447,7 +447,6 @@ describe('layouts on shaped hulls', () => {
     test('saves the shape', () => {
       const floor = setShip('disk');
       const layout = serializeLayout({ ...global.shipData, floorWidth: floor.width });
-      expect(layout.version).toBe(2);
       expect(layout.version).toBe(LAYOUT_VERSION);
       expect(layout.floors.shape).toBe('disk');
     });
@@ -461,7 +460,7 @@ describe('layouts on shaped hulls', () => {
       const csv = 'Courier, Streamlined Lifting Body configuration, 300 tons, Tech Level G';
       const v1 = { format: 'starship-architect-layout', version: 1, ship: { csv }, floors: { count: 2, length: 10, ceilingHeight: 2.5 }, placements: [] };
       const layout = parseLayout(JSON.stringify(v1));
-      expect(layout.version).toBe(2);
+      expect(layout.version).toBe(LAYOUT_VERSION);
       expect(layout.floors.shape).toBe('rectangular');
       expect(layout.floors.count).toBe(2);
       expect(v1.version).toBe(1);
@@ -473,9 +472,9 @@ describe('layouts on shaped hulls', () => {
       expect(() => parseLayout(JSON.stringify(v1))).toThrow(/invalid floor settings/);
     });
 
-    test('version 2 is left alone', () => {
-      const v2 = { version: 2, floors: { shape: 'cone' } };
-      expect(migrateLayout(v2)).toBe(v2);
+    test('the current version is left alone', () => {
+      const current = { version: LAYOUT_VERSION, floors: { shape: 'cone' } };
+      expect(migrateLayout(current)).toBe(current);
     });
 
     test.each(SHAPES.concat('rectangular'))('%s opens as itself', shape => {

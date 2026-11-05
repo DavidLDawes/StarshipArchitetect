@@ -283,17 +283,19 @@ function drawFloorWithComponents(canvas, floorIndex, length, width, placements =
             if (pos.rects && pos.rects.length > 0) {
                 ctx.save();
                 clipToFloorHull(ctx, floorIndex, pixelsPerMeter);
-                drawPlacedShape(ctx, pos.rects, component, pixelsPerMeter, compIdx, count);
+                drawPlacedShape(ctx, pos.rects, component, pixelsPerMeter, compIdx, count, pos.tons);
                 ctx.restore();
             } else {
                 // Use per-placement dimensions (fallback to component-level for backwards compatibility)
                 const pLength = pos.length || placement.length;
                 const pWidth = pos.width || placement.width;
                 drawPlacedComponent(ctx, pos.x, pos.y, pLength, pWidth,
-                    component, pixelsPerMeter, compIdx, firstItemNum, count);
+                    component, pixelsPerMeter, compIdx, firstItemNum, count, pos.tons);
             }
         }
     }
+
+    updateFloorSpaceReadout(floorIndex);
 }
 
 /**
@@ -312,13 +314,17 @@ function getComponentColors(compIdx) {
  * @param {object} component - Component data
  * @param {number} placementNum - Item number of a single item (1, 2, 3...)
  * @param {number} count - Items held by this placement
+ * @param {number} tons - Tons held, for a component placed by tonnage
  * @returns {string}
  */
-function getPlacementLabel(component, placementNum, count) {
+function getPlacementLabel(component, placementNum, count, tons) {
     // Get component name - use itemName for multi-quantity, remove any "xN" suffix
     let baseName = (component.itemName || component.item).replace(/\s*x\d+$/, '');
     // Staterooms combined with rec/health include that space
     if (component.overheadPerItem > 0) baseName += ' + rec';
+    if (tons > 0) {
+        return `${baseName} ${tons.toFixed(1)} t`;
+    }
     if (count > 1) {
         return `${baseName} ×${count}`;
     }
@@ -358,7 +364,7 @@ function drawFittedLabel(ctx, text, cx, cy, maxWidthPx) {
  * The outline is drawn first and then covered by the fills, so only the outer
  * boundary remains visible and internal seams between rectangles disappear.
  */
-function drawPlacedShape(ctx, rects, component, pixelsPerMeter, compIdx, count) {
+function drawPlacedShape(ctx, rects, component, pixelsPerMeter, compIdx, count, tons) {
     const colors = getComponentColors(compIdx);
     const toPx = r => [r.x * pixelsPerMeter, r.y * pixelsPerMeter, r.length * pixelsPerMeter, r.width * pixelsPerMeter];
 
@@ -388,7 +394,7 @@ function drawPlacedShape(ctx, rects, component, pixelsPerMeter, compIdx, count) 
 
     // Label goes in the widest rectangle tall enough for a line of text
     // (labels are horizontal, so a long thin vertical strip is a poor spot)
-    const label = getPlacementLabel(component, 1, count);
+    const label = getPlacementLabel(component, 1, count, tons);
     const tallEnough = rects.filter(r => r.width * pixelsPerMeter >= 16);
     const candidates = tallEnough.length > 0 ? tallEnough : rects;
     const best = candidates.reduce((a, b) => (b.length > a.length ? b : a));
@@ -400,8 +406,9 @@ function drawPlacedShape(ctx, rects, component, pixelsPerMeter, compIdx, count) 
  * Draw a placed component on the canvas
  * @param {number} placementNum - The individual item number (1, 2, 3, etc.)
  * @param {number} count - Number of items held by this rectangle
+ * @param {number} tons - Tons held, for a component placed by tonnage
  */
-function drawPlacedComponent(ctx, x, y, compLength, compWidth, component, pixelsPerMeter, compIdx, placementNum = 1, count = 1) {
+function drawPlacedComponent(ctx, x, y, compLength, compWidth, component, pixelsPerMeter, compIdx, placementNum = 1, count = 1, tons = 0) {
     const px = x * pixelsPerMeter;
     const py = y * pixelsPerMeter;
     const pw = compLength * pixelsPerMeter;
@@ -418,7 +425,7 @@ function drawPlacedComponent(ctx, x, y, compLength, compWidth, component, pixels
     ctx.lineWidth = 2;
     ctx.strokeRect(px, py, pw, ph);
 
-    drawFittedLabel(ctx, getPlacementLabel(component, placementNum, count), px + pw / 2, py + ph / 2, pw);
+    drawFittedLabel(ctx, getPlacementLabel(component, placementNum, count, tons), px + pw / 2, py + ph / 2, pw);
 }
 
 /**

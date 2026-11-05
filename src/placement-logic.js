@@ -106,15 +106,16 @@ function checkOverlap(floorIndex, x, y, length, width, excludeComponentIndex = -
 // ========================================
 
 /**
- * Rectangles of other components on a floor
+ * Rectangles of other components on one or more floors
+ * @param {number[]} floors - Floor numbers
  * @returns {Array<{x, y, length, width}>}
  */
-function getObstacleRects(floorIndex, excludeComponentIndex) {
+function getObstacleRects(floors, excludeComponentIndex) {
     const rects = [];
     for (const [compIdxStr, placement] of Object.entries(shipData.componentPlacements)) {
         if (parseInt(compIdxStr) === excludeComponentIndex || !placement.floors) continue;
         for (const pos of placement.floors) {
-            if (pos.floor === floorIndex) rects.push(...getPlacementRects(pos, placement));
+            if (floors.includes(pos.floor)) rects.push(...getPlacementRects(pos, placement));
         }
     }
     return rects;
@@ -125,10 +126,11 @@ function getObstacleRects(floorIndex, excludeComponentIndex) {
  * rectangle fits (getRectFitRegion), so anything taken from that region is
  * inside the hull and anything on its boundary is against the hull.
  * @param {Array<[number, number]>} inner - Usable space of the floor
+ * @param {number[]} floors - Floors the component has to be clear on
  * @returns {object|null} {x, y} if valid position found, null otherwise
  */
-function findValidPositionInHull(inner, floorIndex, origX, origY, compLength, compWidth, excludeComponentIndex, requireHull) {
-    const isFree = (x, y) => !checkOverlap(floorIndex, x, y, compLength, compWidth, excludeComponentIndex);
+function findValidPositionInHull(inner, floors, origX, origY, compLength, compWidth, excludeComponentIndex, requireHull) {
+    const isFree = (x, y) => floors.every(f => !checkOverlap(f, x, y, compLength, compWidth, excludeComponentIndex));
 
     if (isRectInConvexPolygon(inner, origX, origY, compLength, compWidth) &&
         (!requireHull || isRectOnConvexPolygonWall(inner, origX, origY, compLength, compWidth)) &&
@@ -144,7 +146,7 @@ function findValidPositionInHull(inner, floorIndex, origX, origY, compLength, co
 
     // Try alongside each obstacle, and where those lines meet the edge of the region
     const candidates = [settle(origX, origY)];
-    for (const r of getObstacleRects(floorIndex, excludeComponentIndex)) {
+    for (const r of getObstacleRects(floors, excludeComponentIndex)) {
         const xs = [r.x + r.length, r.x - compLength];
         const ys = [r.y + r.width, r.y - compWidth];
         for (const x of xs) {
@@ -173,16 +175,18 @@ function findValidPositionInHull(inner, floorIndex, origX, origY, compLength, co
  * Find a valid position for a component, adjusting if there's overlap
  * @param {boolean} requireHull - Component must lie against the outer hull
  *   (weapons, vehicles, launch bays); candidates then slide along the hull
- * @param {number|number[]} fitFloors - Floors the position has to fit and touch the
- *   hull of, when the component spans several; overlap is only checked on floorIndex
+ * @param {number|number[]} fitFloors - Floors the position has to fit, touch the hull
+ *   of, and be clear of other components on, when the component spans several
  * @returns {object|null} {x, y} if valid position found, null otherwise
  */
 function findValidPosition(floorIndex, origX, origY, compLength, compWidth, floorLength, floorWidth, excludeComponentIndex, requireHull = false, fitFloors = floorIndex) {
+    const floors = [].concat(fitFloors);
     const inner = getShapedInner(fitFloors);
     if (inner) {
-        return findValidPositionInHull(inner, floorIndex, origX, origY, compLength, compWidth, excludeComponentIndex, requireHull);
+        return findValidPositionInHull(inner, floors, origX, origY, compLength, compWidth, excludeComponentIndex, requireHull);
     }
 
+    const isClear = (x, y) => floors.every(f => !checkOverlap(f, x, y, compLength, compWidth, excludeComponentIndex));
     const armorThickness = shipData.armorThickness || 0;
     const onHull = (x, y) => !requireHull ||
         touchesHull(x, y, compLength, compWidth, floorLength, floorWidth, armorThickness);
@@ -190,12 +194,12 @@ function findValidPosition(floorIndex, origX, origY, compLength, compWidth, floo
     // First, check if original position works (within usable area, on the hull if required, no overlap)
     if (isWithinUsableArea(origX, origY, compLength, compWidth, floorLength, floorWidth, armorThickness) &&
         onHull(origX, origY) &&
-        !checkOverlap(floorIndex, origX, origY, compLength, compWidth, excludeComponentIndex)) {
+        isClear(origX, origY)) {
         return { x: origX, y: origY };
     }
 
     // Get all components on this floor that might overlap
-    const overlappingComponents = getObstacleRects(floorIndex, excludeComponentIndex);
+    const overlappingComponents = getObstacleRects(floors, excludeComponentIndex);
 
     // Generate candidate positions by aligning to edges of overlapping components
     const candidates = [];
@@ -240,7 +244,7 @@ function findValidPosition(floorIndex, origX, origY, compLength, compWidth, floo
         }))
         .filter(pos => isWithinUsableArea(pos.x, pos.y, compLength, compWidth, floorLength, floorWidth, armorThickness) &&
                       onHull(pos.x, pos.y) &&
-                      !checkOverlap(floorIndex, pos.x, pos.y, compLength, compWidth, excludeComponentIndex))
+                      isClear(pos.x, pos.y))
         .map(pos => ({
             ...pos,
             distance: Math.sqrt(Math.pow(pos.x - origX, 2) + Math.pow(pos.y - origY, 2))

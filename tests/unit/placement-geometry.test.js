@@ -292,10 +292,11 @@ describe('takeAreaFromCells', () => {
 describe('planRegionAllocation', () => {
   const region = analyzeFreeSpace({ x0: 0, y0: 0, x1: 10, y1: 10 }, []).regions[0]; // 100 m²
 
-  test('region smaller than the remaining need is consumed whole', () => {
+  test('region smaller than the remaining need uses only what its items need', () => {
     const plan = planRegionAllocation(region, 22.4, 10);
     expect(plan.count).toBe(4);
-    expect(plan.area).toBeCloseTo(100);
+    expect(plan.area).toBeCloseTo(89.6);
+    expect(plan.regionArea).toBeCloseTo(100);
   });
 
   test('region bigger than the remaining need is packed to the exact area', () => {

@@ -10,6 +10,8 @@
  *   { floor, x, y, length, width, count, rects }   an odd-shaped region made of
  *                                                  several rectangles; x/y/length/width
  *                                                  are its bounding box
+ * Components that can take irregular space (fuel, cargo...: see component-dimensions.js)
+ * are placed by tonnage, so their entries also carry `tons`.
  *
  * Free space is computed on a coordinate-compressed grid: every armor edge and
  * component edge on the floor becomes a grid line, so each grid cell is either
@@ -33,6 +35,13 @@ const GEOM_EPS = 1e-6;
  * separate free regions into one.
  */
 const MIN_PASSAGE = 0.5;
+
+/**
+ * Free regions smaller than this (m²) aren't worth filling by tonnage. It is small
+ * because a full ship needs its small gaps: regions are used largest first, so they
+ * only come into it once the open areas have run out.
+ */
+const MIN_FILL_AREA = 0.05;
 
 // ========================================
 // Placement Shape / Count Helpers
@@ -85,6 +94,41 @@ function getPlacedCountByFloor(placement) {
     if (!placement || !placement.floors) return byFloor;
     for (const pos of placement.floors) {
         byFloor[pos.floor] = (byFloor[pos.floor] || 0) + getPlacementCount(pos);
+    }
+    return byFloor;
+}
+
+/**
+ * Tons held by a placement entry: its `tons`, or what its floor area works out to
+ * for an entry saved without one
+ * @param {object} pos - Placement entry
+ * @returns {number} Tons
+ */
+function getEntryTons(pos) {
+    if (pos.tons > 0) return pos.tons;
+    return sumRectArea(getPlacementRects(pos)) * shipData.ceilingHeight / SQM_PER_TON;
+}
+
+/**
+ * Tons placed for a component that is placed by tonnage
+ * @param {object} placement - shipData.componentPlacements[i]
+ * @returns {number} Tons
+ */
+function getPlacedTons(placement) {
+    if (!placement || !placement.floors) return 0;
+    return placement.floors.reduce((sum, pos) => sum + getEntryTons(pos), 0);
+}
+
+/**
+ * Tons placed on each floor for a component that is placed by tonnage
+ * @param {object} placement - shipData.componentPlacements[i]
+ * @returns {Object<number, number>} { floorNumber: tons }
+ */
+function getPlacedTonsByFloor(placement) {
+    const byFloor = {};
+    if (!placement || !placement.floors) return byFloor;
+    for (const pos of placement.floors) {
+        byFloor[pos.floor] = (byFloor[pos.floor] || 0) + getEntryTons(pos);
     }
     return byFloor;
 }
@@ -458,9 +502,10 @@ function nearestSweepDirection(bbox, x, y) {
 
 /**
  * Plan how many items go into one free region and which part of it they use.
- * - If the region holds every remaining item, only the needed area is used,
- *   packed in from the `direction` side of the region.
- * - Otherwise the whole region is consumed and holds floor(area / itemArea) items.
+ * Only the area the items need is used, packed in from the `direction` side, so what
+ * is left of the region stays free for something else. On a full ship every m² counts.
+ * - If the region holds every remaining item, they all go in it.
+ * - Otherwise it holds floor(area / itemArea) items.
  * @param {object} region - Region from analyzeFreeSpace
  * @param {number} itemArea - Area of one item in m²
  * @param {number} remaining - Items still to be placed
@@ -470,19 +515,13 @@ function nearestSweepDirection(bbox, x, y) {
 function planRegionAllocation(region, itemArea, remaining, direction = 'left') {
     if (!region || itemArea <= 0 || remaining <= 0) return null;
 
-    const neededArea = remaining * itemArea;
-    let count;
-    let rects;
-    if (region.area >= neededArea - GEOM_EPS) {
-        count = remaining;
-        rects = region.area - neededArea > GEOM_EPS
-            ? mergeCellsToRects(takeAreaFromCells(region.cells, neededArea, direction))
-            : region.rects.map(r => ({ ...r }));
-    } else {
-        count = Math.floor((region.area + GEOM_EPS) / itemArea);
-        rects = region.rects.map(r => ({ ...r }));
-    }
+    const count = Math.min(remaining, Math.floor((region.area + GEOM_EPS) / itemArea));
     if (count <= 0) return null;
+
+    const neededArea = count * itemArea;
+    const rects = region.area - neededArea > GEOM_EPS
+        ? mergeCellsToRects(takeAreaFromCells(region.cells, neededArea, direction))
+        : region.rects.map(r => ({ ...r }));
 
     return {
         count,
@@ -532,6 +571,63 @@ function planFloorFill(regions, itemArea, remaining) {
 }
 
 /**
+ * Plan taking an amount of floor area from one free region: the part nearest the
+ * `direction` side if the region has more than is needed, otherwise all of it
+ * @param {object} region - Region from analyzeFreeSpace
+ * @param {number} neededArea - Area still wanted in m²
+ * @param {string} direction - Side to pack from (see takeAreaFromCells)
+ * @returns {object|null} { rects, area, bbox, regionArea }, or null if the region
+ *   is too small to be worth using
+ */
+function planRegionArea(region, neededArea, direction = 'left') {
+    if (!region || neededArea <= 0) return null;
+    if (region.area < Math.min(MIN_FILL_AREA, neededArea) - GEOM_EPS) return null;
+
+    const rects = region.area - neededArea > GEOM_EPS
+        ? mergeCellsToRects(takeAreaFromCells(region.cells, neededArea, direction))
+        : region.rects.map(r => ({ ...r }));
+    return { rects, area: sumRectArea(rects), bbox: getBoundingBox(rects), regionArea: region.area };
+}
+
+/**
+ * Plan filling free space on a floor with an amount of floor area. If one region
+ * can hold it all, the smallest such region is used (best fit), leaving larger
+ * open areas for other components. Otherwise regions are used largest first.
+ * @param {Array<object>} regions - Regions from analyzeFreeSpace
+ * @param {number} neededArea - Area wanted in m²
+ * @returns {Array<object>} Allocations from planRegionArea
+ */
+function planAreaFill(regions, neededArea) {
+    if (neededArea <= 0) return [];
+    const bestFit = regions
+        .filter(r => r.area >= neededArea - GEOM_EPS)
+        .sort((a, b) => a.area - b.area)[0];
+    if (bestFit) return [planRegionArea(bestFit, neededArea)];
+
+    const allocations = [];
+    let left = neededArea;
+    for (const region of regions.slice().sort((a, b) => b.area - a.area)) {
+        if (left <= GEOM_EPS) break;
+        const plan = planRegionArea(region, left);
+        if (plan) {
+            allocations.push(plan);
+            left -= plan.area;
+        }
+    }
+    return allocations;
+}
+
+/**
+ * Floor area taken up on a floor
+ * @param {number} floorIndex - Floor number (1-based)
+ * @param {object} placements - Defaults to shipData.componentPlacements
+ * @returns {number} Area in m²
+ */
+function getFloorUsedArea(floorIndex, placements = shipData.componentPlacements) {
+    return sumRectArea(getOccupiedRects(floorIndex, placements));
+}
+
+/**
  * Summarize free space for display
  * @param {Array<object>} regions - Regions from analyzeFreeSpace
  * @param {number} itemArea - Area of one item in m²
@@ -562,6 +658,9 @@ if (typeof module !== 'undefined') {
         getPlacementCount,
         getPlacedCount,
         getPlacedCountByFloor,
+        getEntryTons,
+        getPlacedTons,
+        getPlacedTonsByFloor,
         getBoundingBox,
         sumRectArea,
         getOccupiedRects,
@@ -573,6 +672,9 @@ if (typeof module !== 'undefined') {
         nearestSweepDirection,
         planRegionAllocation,
         planFloorFill,
+        planRegionArea,
+        planAreaFill,
+        getFloorUsedArea,
         summarizeFreeSpace
     };
 }

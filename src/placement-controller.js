@@ -150,8 +150,15 @@ function placeMultiFloorComponent(data, x, y, compLength, compWidth, floorLength
         shipData.componentPlacements[data.componentIndex] = { floors: [] };
     }
 
+    // A component placed by tonnage shares what's left of it between the floors
+    const component = shipData.components[data.componentIndex];
+    const tonsPerFloor = canTakeIrregularSpace(component)
+        ? getRemainingTons(component, shipData.componentPlacements[data.componentIndex]) / data.floors.length
+        : 0;
+
     for (const f of data.floors) {
         const entry = { floor: f, x: x, y: y, length: compLength, width: compWidth };
+        if (tonsPerFloor > 0) entry.tons = tonsPerFloor;
         shipData.componentPlacements[data.componentIndex].floors.push(entry);
 
         // Record in history for undo
@@ -192,6 +199,10 @@ function placeSingleFloorComponent(data, floorIndex, x, y, compLength, compWidth
     const count = data.count > 1 ? data.count : 1;
     const entry = { floor: floorIndex, x: x, y: y, length: compLength, width: compWidth };
     if (count > 1) entry.count = count;
+    const placedByTons = canTakeIrregularSpace(shipData.components[data.componentIndex]);
+    if (placedByTons) {
+        entry.tons = getRemainingTons(shipData.components[data.componentIndex], shipData.componentPlacements[data.componentIndex]);
+    }
     shipData.componentPlacements[data.componentIndex].floors.push(entry);
 
     // Record in history for undo
@@ -210,7 +221,7 @@ function placeSingleFloorComponent(data, floorIndex, x, y, compLength, compWidth
     const placement = shipData.componentPlacements[data.componentIndex];
     const placedCount = getPlacedCount(placement);
 
-    if (count === 1 && placedCount < totalQuantity) {
+    if (count === 1 && placedCount < totalQuantity && !placedByTons) {
         // More items to place - continue placement mode
         renderComponents();
         data.floors = [];

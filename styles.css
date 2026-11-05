@@ -1170,3 +1170,18 @@ body {
     cursor: move;
     box-shadow: 0 0 20px var(--color-accent-primary);
 }
+
+/* Floor space readouts */
+.floor-free {
+    font-size: 0.85rem;
+    color: #8fd3ff;
+}
+
+.ship-space-summary {
+    margin-bottom: 0.75rem;
+    color: #8fd3ff;
+}
+
+.ship-space-summary.warning {
+    color: #ffb74d;
+}
