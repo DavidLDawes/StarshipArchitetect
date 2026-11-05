@@ -13,6 +13,7 @@
  * Dependencies (globals in the browser, required in Jest via jest-setup):
  * - placement-geometry.js (getPlacementRects, getPlacementCount)
  * - layout-io.js (buildComponentKeys, baseItemName)
+ * - hull-shapes.js (describeFloorSize)
  */
 
 // ========================================
@@ -48,6 +49,13 @@ function exportColors(componentIndex) {
 }
 
 /**
+ * SVG path data for a polygon
+ */
+function polygonPath(polygon) {
+    return polygon.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${svgNum(x)} ${svgNum(y)}`).join('') + 'Z';
+}
+
+/**
  * Text shown on a placement: "Staterooms ×140", "Bridge"
  */
 function exportLabel(component, count) {
@@ -62,7 +70,8 @@ function exportLabel(component, count) {
 
 /**
  * Build an SVG document of the floor plan
- * @param {object} ship - shipData plus floorWidth
+ * @param {object} ship - shipData plus floorWidth, and geometry from
+ *   getShipGeometry() for a shaped hull (without it, floors are plain rectangles)
  * @param {object} options
  * @param {number[]} options.floors - Floors to include (default: all)
  * @param {number} options.mmPerMeter - Print scale (default 10, i.e. 1:100)
@@ -77,6 +86,7 @@ function exportLayoutSvg(ship, options = {}) {
     const gap = options.gap !== undefined ? options.gap : 6;
     const floors = options.floors || Array.from({ length: ship.numFloors }, (_, i) => i + 1);
     const keys = buildComponentKeys(ship.components);
+    const shaped = ship.geometry && ship.geometry.shape !== 'rectangular' ? ship.geometry : null;
 
     // Text sizes in meters, scaled to the floor so labels stay readable
     const titleSize = Math.max(1, Math.min(4, floorLength / 25));
@@ -94,8 +104,9 @@ function exportLayoutSvg(ship, options = {}) {
     const title = ship.shipName ? `${ship.shipName} — deck plan` : 'Deck plan';
     const sizeText = `${Number(floorLength.toFixed(1))} × ${Number(floorWidth.toFixed(1))} m`;
     out.push(`  <title>${escapeXml(title)}</title>`);
-    out.push(`  <desc>${escapeXml(`Starship Architect export. ${ship.totalTons} tons, ${ship.numFloors} floors of ` +
-        `${sizeText}, ceiling ${ship.ceilingHeight} m, armor ${Number(armor.toFixed(3))} m. ` +
+    const floorsText = shaped ? `${ship.numFloors} floors, ${shaped.shape} hull` : `${ship.numFloors} floors of ${sizeText}`;
+    out.push(`  <desc>${escapeXml(`Starship Architect export. ${ship.totalTons} tons, ${floorsText}, ` +
+        `ceiling ${ship.ceilingHeight} m, armor ${Number(armor.toFixed(3))} m. ` +
         `Units: meters; printed scale 1:${Math.round(1000 / mmPerMeter)}.`)}</desc>`);
     out.push(`  <rect x="0" y="0" width="${svgNum(totalWidth)}" height="${svgNum(totalHeight)}" fill="#ffffff"/>`);
     out.push(`  <text x="${svgNum(margin)}" y="${svgNum(margin + titleSize)}" font-size="${svgNum(titleSize * 1.2)}" ` +
@@ -104,18 +115,29 @@ function exportLayoutSvg(ship, options = {}) {
     floors.forEach((f, n) => {
         const top = margin + headerHeight + n * (blockHeight + gap);
         const fy = top + headerHeight; // floor rectangle origin
+        const floorShape = shaped ? shaped.floors[f - 1] : null;
+        const floorSize = floorShape ? describeFloorSize(floorShape, shaped.shape) : sizeText;
         out.push(`  <g id="floor-${f}" inkscape:groupmode="layer" inkscape:label="Floor ${f}" data-floor="${f}">`);
         out.push(`    <text x="${svgNum(margin)}" y="${svgNum(top + titleSize * 1.5)}" font-size="${svgNum(titleSize)}" fill="#111111">` +
-            `${escapeXml(`Floor ${f} — ${sizeText}`)}</text>`);
+            `${escapeXml(`Floor ${f} — ${floorSize}`)}</text>`);
 
         // Hull outline with the armor band
         out.push(`    <g transform="translate(${svgNum(margin)} ${svgNum(fy)})">`);
-        if (armor > 0) {
-            out.push(`      <path class="armor" fill="#9e9e9e" fill-rule="evenodd" d="M0 0H${svgNum(floorLength)}V${svgNum(floorWidth)}H0Z ` +
-                `M${svgNum(armor)} ${svgNum(armor)}V${svgNum(floorWidth - armor)}H${svgNum(floorLength - armor)}V${svgNum(armor)}Z"/>`);
+        if (floorShape) {
+            if (armor > 0) {
+                out.push(`      <path class="armor" fill="#9e9e9e" fill-rule="evenodd" d="${polygonPath(floorShape.outline)} ` +
+                    `${floorShape.inner.length > 0 ? polygonPath(floorShape.inner) : ''}"/>`);
+            }
+            out.push(`      <path class="hull" d="${polygonPath(floorShape.outline)}" ` +
+                'fill="none" stroke="#222222" stroke-width="0.15"/>');
+        } else {
+            if (armor > 0) {
+                out.push(`      <path class="armor" fill="#9e9e9e" fill-rule="evenodd" d="M0 0H${svgNum(floorLength)}V${svgNum(floorWidth)}H0Z ` +
+                    `M${svgNum(armor)} ${svgNum(armor)}V${svgNum(floorWidth - armor)}H${svgNum(floorLength - armor)}V${svgNum(armor)}Z"/>`);
+            }
+            out.push(`      <rect class="hull" x="0" y="0" width="${svgNum(floorLength)}" height="${svgNum(floorWidth)}" ` +
+                'fill="none" stroke="#222222" stroke-width="0.15"/>');
         }
-        out.push(`      <rect class="hull" x="0" y="0" width="${svgNum(floorLength)}" height="${svgNum(floorWidth)}" ` +
-            'fill="none" stroke="#222222" stroke-width="0.15"/>');
 
         // Placements on this floor
         ship.components.forEach((component, ci) => {

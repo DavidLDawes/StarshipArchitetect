@@ -13,8 +13,9 @@
  * armor inset and fit checks simple. Floors are numbered from the bottom: floor 1
  * is the bottom deck.
  *
- * Bow direction: the wing's bow is toward y = 0, as the top of a floor plan.
- * The wedge's rear edges line up at x = length, so its bow is toward x = 0.
+ * Each shape's `bow` says which way it points on a floor plan: 'top' is toward
+ * y = 0 and 'left' is toward x = 0, so the wedge's rear edges line up at
+ * x = length. Round shapes and plain rectangles have no bow.
  *
  * Dependencies (globals in the browser, required in Jest via jest-setup):
  * - floor-utils.js (calculateTotalFloorArea, calculateDefaultFloorLength, calculateArmorThickness)
@@ -379,6 +380,8 @@ const sphereProfile = ({ u }) => Math.sqrt(1 - u * u);
  * from the bottom floor up.
  * - freeLength: the user chooses the length; without it the shape sets its own
  * - isRectangle: every floor is an axis-aligned rectangle
+ * - isRound: every floor is a circle
+ * - bow: which way the shape points on a floor plan, if it has a front
  * - defaultLength: length to use when the user hasn't chosen one
  */
 const HULL_SHAPES = {
@@ -402,6 +405,7 @@ const HULL_SHAPES = {
         label: 'Wedge',
         freeLength: true,
         isRectangle: true,
+        bow: 'left',
         defaultLength(totalArea, numFloors) {
             const largest = Math.max(...shareArea(getRelativeSizes(wedgeProfile, numFloors), 1, totalArea));
             return roundDefaultLength(Math.sqrt(largest * WEDGE_DEFAULT_ASPECT));
@@ -420,12 +424,14 @@ const HULL_SHAPES = {
         general: 'standard',
         label: 'Cone',
         freeLength: false,
+        isRound: true,
         build: (numFloors, totalArea) => buildRoundFloors(coneProfile, numFloors, totalArea)
     },
     sphere: {
         general: 'standard',
         label: 'Sphere',
         freeLength: false,
+        isRound: true,
         build: (numFloors, totalArea) => buildRoundFloors(sphereProfile, numFloors, totalArea)
     },
     cylinder: {
@@ -433,6 +439,7 @@ const HULL_SHAPES = {
         label: 'Cylinder',
         freeLength: true,
         isRectangle: true,
+        bow: 'left',
         defaultLength(totalArea, numFloors) {
             const largest = Math.max(...shareArea(getRelativeSizes(sphereProfile, numFloors), 1, totalArea));
             return roundDefaultLength(Math.sqrt(largest * CYLINDER_DEFAULT_ASPECT));
@@ -451,6 +458,7 @@ const HULL_SHAPES = {
         general: 'streamlined',
         label: 'Wing',
         freeLength: true,
+        bow: 'top',
         defaultLength: (totalArea, numFloors) =>
             roundDefaultLength(Math.sqrt((totalArea / numFloors) * WING_DEFAULT_ASPECT)),
         build(numFloors, totalArea, span) {
@@ -480,12 +488,14 @@ const HULL_SHAPES = {
         general: 'streamlined',
         label: 'Disk',
         freeLength: false,
+        isRound: true,
         build: (numFloors, totalArea) => buildRoundFloors(() => 1, numFloors, totalArea)
     },
     'lifting-body': {
         general: 'streamlined',
         label: 'Lifting Body',
         freeLength: false,
+        bow: 'left',
         build(numFloors, totalArea) {
             const unitArea = polygonArea(roundedRectanglePolygon(
                 0, 0, LIFTING_BODY_ASPECT, 1, LIFTING_BODY_CORNER));
@@ -529,6 +539,20 @@ function getNaturalFloorCount(shape, totalTons, ceilingHeight) {
     if (shape !== 'sphere') return null;
     const radius = Math.cbrt((3 * totalTons * SQM_PER_TON) / (4 * Math.PI));
     return Math.max(1, Math.round((2 * radius) / ceilingHeight));
+}
+
+/**
+ * Size of one floor as text, for floor lists and exports
+ * @param {object} floor - A floor from buildFloorGeometry
+ * @param {string} shape - Hull shape
+ * @returns {string} "25.1 m across, 494 m²" or "28.1 × 14.1 m, 395 m²"
+ */
+function describeFloorSize(floor, shape) {
+    const area = `${Math.round(floor.area).toLocaleString()} m²`;
+    if (HULL_SHAPES[resolveHullShape(shape)].isRound) {
+        return `${floor.bounds.length.toFixed(1)} m across, ${area}`;
+    }
+    return `${floor.bounds.length.toFixed(1)} × ${floor.bounds.width.toFixed(1)} m, ${area}`;
 }
 
 // ========================================
@@ -614,6 +638,7 @@ if (typeof module !== 'undefined') {
         resolveHullShape,
         getDefaultHullLength,
         getNaturalFloorCount,
+        describeFloorSize,
         buildFloorGeometry
     };
 }

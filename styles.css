@@ -399,6 +399,13 @@ body {
     border-color: var(--color-accent-primary);
 }
 
+.dimension-select:disabled,
+.config-row input[type="number"]:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    border-color: var(--color-border);
+}
+
 .dimension-select:focus {
     border-color: var(--color-accent-primary);
     box-shadow: 0 0 8px var(--color-glow);

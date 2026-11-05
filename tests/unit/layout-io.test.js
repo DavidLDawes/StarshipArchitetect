@@ -322,3 +322,69 @@ describe('exportLayoutSvg', () => {
     expect(exportLabel({ item: 'Bridge' }, 1)).toBe('Bridge');
   });
 });
+
+// ============================================================
+// exportLayoutSvg on shaped hulls
+// ============================================================
+
+describe('exportLayoutSvg on shaped hulls', () => {
+  const { buildFloorGeometry } = require('../../src/hull-shapes');
+  const shapedShip = (shape, armorTons = 0) => {
+    const geometry = buildFloorGeometry({ shape, totalTons: 1000, ceilingHeight: 2.5, numFloors: 4, armorTons });
+    return {
+      shipName: 'Test',
+      totalTons: 1000,
+      numFloors: 4,
+      ceilingHeight: 2.5,
+      floorLength: geometry.length,
+      floorWidth: geometry.width,
+      armorThickness: geometry.armorThickness,
+      components: [],
+      componentPlacements: {},
+      geometry,
+    };
+  };
+
+  test('draws each floor\'s own hull outline', () => {
+    const svg = exportLayoutSvg(shapedShip('cone'));
+    const hulls = svg.match(/<path class="hull" d="M[^"]+Z"/g);
+    expect(hulls).toHaveLength(4);
+    expect(new Set(hulls).size).toBe(4);
+    expect(svg).not.toContain('<rect class="hull"');
+  });
+
+  test('floor headers give each floor\'s own size', () => {
+    const ship = shapedShip('cone');
+    const svg = exportLayoutSvg(ship);
+    const { describeFloorSize } = require('../../src/hull-shapes');
+    for (const floor of ship.geometry.floors) {
+      expect(svg).toContain(`Floor ${floor.floor} — ${describeFloorSize(floor, 'cone')}`);
+    }
+  });
+
+  test('the armor band has both the hull and its inner face', () => {
+    const svg = exportLayoutSvg(shapedShip('lifting-body', 20));
+    const armor = svg.match(/<path class="armor"[^>]* d="([^"]+)"/g);
+    expect(armor).toHaveLength(4);
+    expect(armor[0].match(/M/g)).toHaveLength(2);
+  });
+
+  test('a floor the armor fills is drawn solid', () => {
+    const ship = shapedShip('cone', 2000);
+    expect(ship.geometry.floors[3].inner).toEqual([]);
+    const armor = exportLayoutSvg(ship).match(/<path class="armor"[^>]* d="([^"]+)"/g);
+    expect(armor[3].match(/M/g)).toHaveLength(1);
+  });
+
+  test('the description names the shape', () => {
+    expect(exportLayoutSvg(shapedShip('wing'))).toContain('4 floors, wing hull');
+  });
+
+  test('rectangular ships are drawn as before even with geometry supplied', () => {
+    const ship = shapedShip('rectangular');
+    const withGeometry = exportLayoutSvg(ship);
+    const without = exportLayoutSvg({ ...ship, geometry: undefined });
+    expect(withGeometry).toBe(without);
+    expect(withGeometry).toContain('<rect class="hull"');
+  });
+});

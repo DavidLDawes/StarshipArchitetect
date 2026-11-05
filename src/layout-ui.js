@@ -31,11 +31,12 @@ const layoutUiState = {
 // ========================================
 
 /**
- * Ship state plus the derived floor width, as serializeLayout expects
+ * Ship state plus the derived floor width and hull geometry, as serializeLayout
+ * and exportLayoutSvg expect
  */
 function getLayoutState() {
     const { floorWidth } = getCurrentFloorDimensions();
-    return { ...shipData, floorWidth };
+    return { ...shipData, floorWidth, geometry: getShipGeometry() };
 }
 
 /**

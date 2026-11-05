@@ -18,6 +18,7 @@ const {
   resolveHullShape,
   getDefaultHullLength,
   getNaturalFloorCount,
+  describeFloorSize,
   buildFloorGeometry,
 } = require('../../src/hull-shapes');
 const {
@@ -503,6 +504,37 @@ describe('getNaturalFloorCount', () => {
     for (const shape of ALL_SHAPES.filter(s => s !== 'sphere')) {
       expect(getNaturalFloorCount(shape, 1000, 2.5)).toBeNull();
     }
+  });
+});
+
+describe('describeFloorSize', () => {
+  test('round floors give their diameter and area', () => {
+    const floor = build('sphere', 5).floors[2];
+    expect(describeFloorSize(floor, 'sphere'))
+      .toBe(`${floor.bounds.length.toFixed(1)} m across, ${Math.round(floor.area).toLocaleString()} m²`);
+  });
+
+  test('other floors give their length, width, and area', () => {
+    const floor = build('wedge', 5, { length: 60 }).floors[2];
+    expect(describeFloorSize(floor, 'wedge')).toMatch(/^60\.0 × [\d.]+ m, [\d,]+ m²$/);
+  });
+});
+
+describe('shape details used for display', () => {
+  test('only shapes with a clear front have a bow', () => {
+    expect(ALL_SHAPES.filter(s => HULL_SHAPES[s].bow).sort())
+      .toEqual(['cylinder', 'lifting-body', 'wedge', 'wing']);
+    expect(HULL_SHAPES.wing.bow).toBe('top');
+    expect(HULL_SHAPES.wedge.bow).toBe('left');
+  });
+
+  test('round shapes are the ones with circular floors', () => {
+    expect(ALL_SHAPES.filter(s => HULL_SHAPES[s].isRound).sort()).toEqual(['cone', 'disk', 'sphere']);
+    for (const shape of ['cone', 'disk', 'sphere']) expect(build(shape, 3).floors[0].outline).toHaveLength(96);
+  });
+
+  test('every shape has a label', () => {
+    for (const shape of ALL_SHAPES) expect(HULL_SHAPES[shape].label).toBeTruthy();
   });
 });
 
