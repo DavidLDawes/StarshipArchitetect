@@ -99,6 +99,135 @@ function drawFloorGrid(canvas, length, width, armorThickness = 0) {
 }
 
 /**
+ * Add a polygon to the current canvas path
+ */
+function tracePolygon(ctx, polygon, pixelsPerMeter) {
+    polygon.forEach(([x, y], i) => {
+        if (i === 0) ctx.moveTo(x * pixelsPerMeter, y * pixelsPerMeter);
+        else ctx.lineTo(x * pixelsPerMeter, y * pixelsPerMeter);
+    });
+    ctx.closePath();
+}
+
+/**
+ * Small arrow at the canvas edge showing which way the ship points
+ * @param {string} direction - 'left' or 'top'
+ */
+function drawBowMarker(ctx, direction, canvasWidth, canvasHeight) {
+    const size = 9;
+    const horizontal = direction === 'left';
+    const x = horizontal ? size + 3 : canvasWidth / 2;
+    const y = horizontal ? canvasHeight / 2 : size + 3;
+
+    ctx.fillStyle = 'rgba(0, 212, 255, 0.9)';
+    ctx.beginPath();
+    if (horizontal) {
+        ctx.moveTo(x - size, y);
+        ctx.lineTo(x + size, y - size);
+        ctx.lineTo(x + size, y + size);
+    } else {
+        ctx.moveTo(x, y - size);
+        ctx.lineTo(x - size, y + size);
+        ctx.lineTo(x + size, y + size);
+    }
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.font = '12px Inter, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = horizontal ? 'left' : 'center';
+    ctx.fillText('Bow', horizontal ? x + size + 4 : x, horizontal ? y : y + size + 10);
+    ctx.textBaseline = 'alphabetic';
+}
+
+/**
+ * Draw the grid, hull outline, and armor band of a floor with a shaped hull.
+ * The canvas is the frame every floor shares, so a small floor looks small.
+ * @param {HTMLCanvasElement} canvas - The canvas element
+ * @param {number} length - Frame length in meters
+ * @param {number} width - Frame width in meters
+ * @param {object} floor - Floor from buildFloorGeometry
+ * @param {number} armorThickness - Armor thickness in meters
+ * @param {string} shape - Hull shape
+ */
+function drawShapedFloorGrid(canvas, length, width, floor, armorThickness, shape) {
+    const ctx = canvas.getContext('2d');
+    const canvasWidth = canvas.width;
+    const canvasHeight = canvas.height;
+    const pixelsPerMeter = canvasWidth / length;
+
+    // Space outside this floor's hull
+    ctx.fillStyle = '#0d0d1a';
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+    // Deck with its grid, clipped to the hull
+    ctx.save();
+    ctx.beginPath();
+    tracePolygon(ctx, floor.outline, pixelsPerMeter);
+    ctx.fillStyle = '#1a1a2e';
+    ctx.fill();
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(100, 149, 237, 0.3)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x <= length; x++) {
+        ctx.beginPath();
+        ctx.moveTo(x * pixelsPerMeter, 0);
+        ctx.lineTo(x * pixelsPerMeter, canvasHeight);
+        ctx.stroke();
+    }
+    for (let y = 0; y <= width; y++) {
+        ctx.beginPath();
+        ctx.moveTo(0, y * pixelsPerMeter);
+        ctx.lineTo(canvasWidth, y * pixelsPerMeter);
+        ctx.stroke();
+    }
+    ctx.restore();
+
+    // Armor band between the hull and its inner face
+    if (armorThickness > 0) {
+        ctx.beginPath();
+        tracePolygon(ctx, floor.outline, pixelsPerMeter);
+        if (floor.inner.length > 0) tracePolygon(ctx, floor.inner, pixelsPerMeter);
+        ctx.fillStyle = 'rgba(150, 150, 150, 0.3)';
+        ctx.fill('evenodd');
+
+        if (floor.inner.length > 0) {
+            ctx.beginPath();
+            tracePolygon(ctx, floor.inner, pixelsPerMeter);
+            ctx.strokeStyle = 'rgba(180, 180, 180, 0.6)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+    }
+
+    // Hull outline
+    ctx.beginPath();
+    tracePolygon(ctx, floor.outline, pixelsPerMeter);
+    ctx.strokeStyle = 'rgba(100, 149, 237, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Size of this floor, centered under its hull
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+    ctx.font = '14px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    const { x, y, length: floorLength, width: floorWidth } = floor.bounds;
+    const labelX = (x + floorLength / 2) * pixelsPerMeter;
+    const labelY = Math.min((y + floorWidth) * pixelsPerMeter - 8, canvasHeight - 8);
+    ctx.fillText(describeFloorSize(floor, shape), labelX, labelY);
+
+    if (armorThickness > 0) {
+        ctx.fillStyle = 'rgba(200, 200, 200, 0.9)';
+        ctx.font = '12px Inter, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(`Armor: ${armorThickness.toFixed(2)}m`, 10, 20);
+    }
+
+    const { bow } = HULL_SHAPES[shape];
+    if (bow) drawBowMarker(ctx, bow, canvasWidth, canvasHeight);
+}
+
+/**
  * Draw a floor with all placed components
  * @param {HTMLCanvasElement} canvas - The canvas element
  * @param {number} floorIndex - Floor number (1-based)
@@ -111,7 +240,13 @@ function drawFloorGrid(canvas, length, width, armorThickness = 0) {
  */
 function drawFloorWithComponents(canvas, floorIndex, length, width, placements = shipData.componentPlacements, components = shipData.components, selectedPlacement = uiState.selectedPlacement, armorThickness = shipData.armorThickness) {
     // First draw the base grid with armor
-    drawFloorGrid(canvas, length, width, armorThickness);
+    const shape = getShipGeometry().shape;
+    const floorGeometry = getFloorGeometry(floorIndex);
+    if (shape !== 'rectangular' && floorGeometry) {
+        drawShapedFloorGrid(canvas, length, width, floorGeometry, armorThickness, shape);
+    } else {
+        drawFloorGrid(canvas, length, width, armorThickness);
+    }
 
     const ctx = canvas.getContext('2d');
     const canvasWidth = canvas.width;

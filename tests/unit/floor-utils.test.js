@@ -12,6 +12,9 @@ const {
   getFloorGeometry,
   getUnusableFloors,
   recalculateFloors,
+  getFloorAreaRange,
+  getFrameWidthAtLength,
+  getHullDimensionOptions,
   getCurrentFloorDimensions
 } = require('../../src/floor-utils');
 const { polygonArea, circlePolygon, getDefaultHullLength } = require('../../src/hull-shapes');
@@ -417,6 +420,63 @@ describe('current ship geometry', () => {
       const unusable = getUnusableFloors();
       expect(unusable).toContain(4);
       expect(unusable).not.toContain(1);
+    });
+  });
+
+  describe('getFloorAreaRange', () => {
+    test('equal floors have one size', () => {
+      expect(getFloorAreaRange().min).toBeCloseTo(1400);
+      expect(getFloorAreaRange().max).toBeCloseTo(1400);
+    });
+
+    test('a shaped hull reports its smallest and largest floors', () => {
+      global.shipData.hullShape = 'cone';
+      const { floors } = getShipGeometry();
+      expect(getFloorAreaRange().max).toBeCloseTo(floors[0].area);
+      expect(getFloorAreaRange().min).toBeCloseTo(floors[3].area);
+    });
+  });
+
+  describe('getFrameWidthAtLength', () => {
+    test('rectangular floors match the area over the length', () => {
+      expect(getFrameWidthAtLength(40)).toBe(1400 / 40);
+    });
+
+    test('matches the geometry the ship gets at that length', () => {
+      global.shipData.hullShape = 'wing';
+      global.shipData.floorLength = 55;
+      expect(getFrameWidthAtLength(55)).toBeCloseTo(getShipGeometry().width);
+    });
+
+    test('ignores armor, like the floor outline itself', () => {
+      const before = getFrameWidthAtLength(40);
+      global.shipData.armorTons = 50;
+      expect(getFrameWidthAtLength(40)).toBe(before);
+    });
+  });
+
+  describe('getHullDimensionOptions', () => {
+    test('rectangular floors keep the existing choices', () => {
+      expect(getHullDimensionOptions(1400)).toEqual(generateDimensionOptions(1400));
+    });
+
+    test('a shape that sets its own length has one choice', () => {
+      global.shipData.hullShape = 'disk';
+      const options = getHullDimensionOptions(1400);
+      const { length, width } = getShipGeometry();
+      expect(options).toHaveLength(1);
+      expect(options[0]).toMatchObject({ length, width });
+      expect(options[0].label).toContain('set by shape');
+    });
+
+    test.each(['wedge', 'cylinder', 'wing'])('%s widths come from its own geometry', (shape) => {
+      global.shipData.hullShape = shape;
+      const options = getHullDimensionOptions(1400);
+      expect(options.length).toBeGreaterThan(0);
+      for (const option of options) {
+        expect(option.width).toBeCloseTo(getFrameWidthAtLength(option.length));
+        expect(option.label).toBe(`${option.length} × ${option.width.toFixed(1)} m`);
+      }
     });
   });
 

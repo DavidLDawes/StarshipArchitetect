@@ -222,6 +222,44 @@ function recalculateFloors({ resetLength = false } = {}) {
 }
 
 /**
+ * Smallest and largest floor area of the current ship
+ * @returns {{min: number, max: number}} Areas in m²
+ */
+function getFloorAreaRange() {
+    const areas = getShipGeometry().floors.map(f => f.area);
+    return { min: Math.min(...areas), max: Math.max(...areas) };
+}
+
+/**
+ * Frame width the current ship would have at a given length
+ * @param {number} length - Length in meters
+ * @returns {number} Width in meters
+ */
+function getFrameWidthAtLength(length) {
+    const { hullShape, totalTons, ceilingHeight, numFloors } = shipData;
+    return buildFloorGeometry({ shape: hullShape, totalTons, ceilingHeight, numFloors, length }).width;
+}
+
+/**
+ * Size choices for the floor dimensions dropdown on the current ship
+ * @param {number} floorArea - Average floor area in m²
+ * @returns {Array} Array of {length, width, label} objects
+ */
+function getHullDimensionOptions(floorArea) {
+    const shape = resolveHullShape(shipData.hullShape);
+    if (shape === 'rectangular') return generateDimensionOptions(floorArea);
+
+    if (!HULL_SHAPES[shape].freeLength) {
+        const { length, width } = getShipGeometry();
+        return [{ length, width, label: `${length.toFixed(1)} × ${width.toFixed(1)} m (set by shape)` }];
+    }
+    return generateDimensionOptions(floorArea).map(({ length }) => {
+        const width = getFrameWidthAtLength(length);
+        return { length, width, label: `${length} × ${width.toFixed(1)} m` };
+    });
+}
+
+/**
  * Get current floor dimensions from global shipData
  * floorLength and floorWidth are the frame all floors share: the box that holds
  * the largest floor outlines
@@ -251,6 +289,9 @@ if (typeof module !== 'undefined') {
         getFloorGeometry,
         getUnusableFloors,
         recalculateFloors,
+        getFloorAreaRange,
+        getFrameWidthAtLength,
+        getHullDimensionOptions,
         getCurrentFloorDimensions,
     };
 }

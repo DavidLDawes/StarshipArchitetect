@@ -82,6 +82,14 @@
             <h2>🏗️ Floor Configuration</h2>
 
             <div class="config-row">
+                <label for="hull-shape">Hull Shape:</label>
+                <select id="hull-shape" class="dimension-select">
+                    <!-- Options populated dynamically -->
+                </select>
+                <span id="hull-shape-note" class="calculated-value"></span>
+            </div>
+
+            <div class="config-row">
                 <label for="floor-slider">Number of Floors:</label>
                 <input type="range" id="floor-slider" min="1" max="20" value="4" />
                 <span id="floor-count" class="slider-value">4</span>

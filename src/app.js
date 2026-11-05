@@ -18,7 +18,7 @@ let shipData = {
     totalCost: 0,
     components: [],
     configuration: { general: 'standard', shape: 'rectangular', text: '' }, // From the design file (csv-parser.js)
-    hullShape: 'rectangular', // Shape floors are built with (hull-shapes.js); stays rectangular until placement checks handle every shape
+    hullShape: 'rectangular', // Shape floors are built with (hull-shapes.js); starts from the design file, the user can change it
     armorTons: 0,           // Total armor tonnage
     armorThickness: 0,      // Armor thickness in meters (calculated per floor)
     numFloors: 4,
@@ -52,6 +52,8 @@ const elements = {
     totalCost: document.getElementById('total-cost'),
 
     floorConfigSection: document.getElementById('floor-config-section'),
+    hullShape: document.getElementById('hull-shape'),
+    hullShapeNote: document.getElementById('hull-shape-note'),
     floorSlider: document.getElementById('floor-slider'),
     floorCount: document.getElementById('floor-count'),
     floorDimensions: document.getElementById('floor-dimensions'),
@@ -101,16 +103,57 @@ function updateStats() {
 }
 
 /**
+ * Fill the hull shape dropdown, grouped by general class
+ */
+function populateHullShapes() {
+    const groups = { standard: 'Standard', streamlined: 'Streamlined' };
+    elements.hullShape.innerHTML = '';
+    for (const [general, label] of Object.entries(groups)) {
+        const group = document.createElement('optgroup');
+        group.label = label;
+        for (const [shape, definition] of Object.entries(HULL_SHAPES)) {
+            if (definition.general !== general) continue;
+            const option = document.createElement('option');
+            option.value = shape;
+            option.textContent = definition.label;
+            group.appendChild(option);
+        }
+        elements.hullShape.appendChild(group);
+    }
+}
+
+/**
+ * Text beside the hull shape dropdown, relating it to the design file
+ */
+function getHullShapeNote() {
+    const { shape, text } = shipData.configuration;
+    if (shape === 'distributed') return 'This design is Distributed, which isn\'t available yet';
+    if (!text) return '';
+    return shape === shipData.hullShape ? 'From the design file' : `Design file: ${text}`;
+}
+
+/**
  * Update floor configuration display
  */
 function updateFloorConfig() {
     const { floorArea, floorWidth } = getCurrentFloorDimensions();
+    const { freeLength } = HULL_SHAPES[resolveHullShape(shipData.hullShape)];
+    const areas = getFloorAreaRange();
+    const smallest = Math.round(areas.min);
+    const largest = Math.round(areas.max);
 
+    elements.hullShape.value = resolveHullShape(shipData.hullShape);
+    elements.hullShapeNote.textContent = getHullShapeNote();
     elements.floorCount.textContent = shipData.numFloors;
+    if (shipData.numFloors > parseInt(elements.floorSlider.max, 10)) elements.floorSlider.max = shipData.numFloors;
     elements.floorSlider.value = shipData.numFloors;
-    elements.floorLength.value = shipData.floorLength;
+    elements.floorLength.value = freeLength ? shipData.floorLength : shipData.floorLength.toFixed(1);
+    elements.floorLength.disabled = !freeLength;
+    elements.floorDimensions.disabled = !freeLength;
     elements.ceilingHeight.value = shipData.ceilingHeight;
-    elements.sqmPerFloor.textContent = Math.round(floorArea).toLocaleString();
+    elements.sqmPerFloor.textContent = smallest === largest
+        ? largest.toLocaleString()
+        : `${smallest.toLocaleString()} to ${largest.toLocaleString()}`;
     elements.floorWidth.textContent = floorWidth.toFixed(1);
 
     // Update dimension dropdown
@@ -121,7 +164,7 @@ function updateFloorConfig() {
  * Update the dimension dropdown options
  */
 function updateDimensionDropdown(floorArea) {
-    const options = generateDimensionOptions(floorArea);
+    const options = getHullDimensionOptions(floorArea);
 
     // Keep the current length even when it isn't one of the suggestions (typed
     // in, the default, or restored from a layout): show it as a custom option
@@ -129,8 +172,14 @@ function updateDimensionDropdown(floorArea) {
     // placed components and leave the armor thickness calculated for another length
     const current = shipData.floorLength;
     if (current > 0 && !options.some(opt => Math.abs(opt.length - current) < 0.05)) {
-        const width = floorArea / current;
-        options.push({ length: current, width, label: `${Number(current.toFixed(1))} × ${width.toFixed(1)} m (custom)` });
+        const width = getFrameWidthAtLength(current);
+        const isDefault = shipData.hullShape !== 'rectangular' && current === getDefaultHullLength(
+            shipData.hullShape, getCurrentFloorDimensions().totalArea, shipData.numFloors);
+        options.push({
+            length: current,
+            width,
+            label: `${Number(current.toFixed(1))} × ${width.toFixed(1)} m (${isDefault ? 'default' : 'custom'})`
+        });
         options.sort((a, b) => a.length - b.length);
     }
 
@@ -162,6 +211,15 @@ function updateDimensionDropdown(floorArea) {
 }
 
 /**
+ * Marks the ends of the stack, since a shaped hull changes from bottom to top
+ */
+function getFloorPositionLabel(floor) {
+    if (shipData.numFloors < 2) return '';
+    if (floor === 1) return ' (bottom)';
+    return floor === shipData.numFloors ? ' (top)' : '';
+}
+
+/**
  * Render floor list with canvas visualizations
  */
 function renderFloors() {
@@ -173,6 +231,8 @@ function renderFloors() {
     elements.floorList.innerHTML = '';
 
     const unusableFloors = getUnusableFloors();
+    const { shape, floors } = getShipGeometry();
+    const isShaped = shape !== 'rectangular';
 
     for (let i = 1; i <= shipData.numFloors; i++) {
         const floorItem = document.createElement('div');
@@ -184,8 +244,10 @@ function renderFloors() {
         floorInfo.innerHTML = `
             <div class="floor-number">${i}</div>
             <div class="floor-details">
-                <div class="floor-name">Floor ${i}</div>
-                <div class="floor-dimensions">${floorLength} × ${floorWidth.toFixed(1)} meters, ${shipData.ceilingHeight} meters tall</div>
+                <div class="floor-name">Floor ${i}${isShaped ? getFloorPositionLabel(i) : ''}</div>
+                <div class="floor-dimensions">${isShaped
+                    ? describeFloorSize(floors[i - 1], shape)
+                    : `${floorLength} × ${floorWidth.toFixed(1)} meters`}, ${shipData.ceilingHeight} meters tall</div>
                 ${unusableFloors.includes(i) ? '<div class="floor-warning">⚠️ No usable space: the armor fills this floor</div>' : ''}
             </div>
         `;
@@ -343,6 +405,16 @@ function refreshUI() {
 // ========================================
 
 /**
+ * Set the hull shape, moving to its natural floor count if it has one
+ * @param {string} shape - Shape from the design file or the dropdown
+ */
+function applyHullShape(shape) {
+    shipData.hullShape = resolveHullShape(shape);
+    const natural = getNaturalFloorCount(shipData.hullShape, shipData.totalTons, shipData.ceilingHeight);
+    if (natural !== null) shipData.numFloors = natural;
+}
+
+/**
  * Load and process CSV data from a string
  * @param {string} csvString - CSV content as string
  * @param {string} source - Source description for logging (e.g., "URL", "file")
@@ -400,7 +472,8 @@ function loadCsvFromString(csvString, source = 'unknown', filename = '') {
         shipData.combineRecHealth = false; // New components start uncombined
         shipData.originalCsv = csvString; // Preserve raw CSV so share URL round-trips correctly
 
-        // Default floor length and armor thickness
+        // Shape from the design file, default floor length, and armor thickness
+        applyHullShape(parsed.configuration.shape);
         recalculateFloors({ resetLength: true });
 
         // Show sections and refresh UI
@@ -550,6 +623,22 @@ elements.csvInput.addEventListener('change', function (event) {
 });
 
 /**
+ * Handle hull shape changes
+ */
+elements.hullShape.addEventListener('change', function (event) {
+    endInteractiveModes();
+    applyHullShape(event.target.value);
+
+    // Default floor length and armor thickness for the new shape
+    recalculateFloors({ resetLength: true });
+
+    // Clear placements when the shape changes
+    shipData.componentPlacements = {};
+
+    refreshUI();
+});
+
+/**
  * Handle floor slider changes
  */
 elements.floorSlider.addEventListener('input', function (event) {
@@ -620,6 +709,8 @@ elements.floorDimensions.addEventListener('change', function (event) {
 // Initialization
 // ========================================
 document.addEventListener('DOMContentLoaded', function () {
+    populateHullShapes();
+
     // Check for CSV data in URL parameters first
     const loadedFromUrl = checkForUrlCsvData();
 
