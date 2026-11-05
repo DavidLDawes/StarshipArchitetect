@@ -232,6 +232,9 @@ function applyLayout(layout, { useSavedDesign, sourceName = 'layout', quiet = fa
     }
 
     // Floor settings (set directly: the floor controls' handlers clear placements)
+    // Loading a design sets its own shape, and the layout's choice replaces that
+    const hullShape = getLayoutHullShape(layout);
+    shipData.hullShape = hullShape.shape;
     shipData.numFloors = layout.floors.count;
     shipData.floorLength = layout.floors.length;
     shipData.ceilingHeight = layout.floors.ceilingHeight;
@@ -239,7 +242,7 @@ function applyLayout(layout, { useSavedDesign, sourceName = 'layout', quiet = fa
     const dims = getCurrentFloorDimensions();
 
     // Options that change component sizes go before the placements
-    const problems = [];
+    const problems = hullShape.problem ? [hullShape.problem] : [];
     const wantCombine = !!layout.options.combineRecHealth;
     const canCombine = canCombineRecHealth(shipData.components);
     if (wantCombine && !canCombine) {
