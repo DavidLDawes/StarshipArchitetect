@@ -1,0 +1,33 @@
+Courier, Streamlined Lifting Body configuration, 300 tons, Tech Level G
+Category,Item,Mass,Cost
+Hull,300 tons (streamlined),,12.00
+Engines,Power Plant P-8,34.0,88.00
+,Jump Drive J-8,60.0,110.00
+,Maneuver Drive M-6,17.0,36.00
+Fuel,Fuel (2 weeks),21.0,0.00
+Fittings,Bridge,20.0,1.50
+,Advanced Comms & Sensors,3.0,2.00
+Weapons,Dual Fusion Gun Barbette,10.0,16.00
+Defenses,Dual Point Defense Laser Turret (x2),2.0,3.00
+Berths,Staterooms (x12),48.0,6.00
+,Luxury Staterooms (x4),20.0,2.40
+,Emergency Low,1.0,1.00
+,Low Berths (x6),3.0,0.30
+Rec/Health,Commissary,2.0,0.20
+,Gym,3.0,0.10
+,Spa,1.5,0.20
+,First Aid Station,0.5,0.10
+,Library,1.0,0.10
+,Range,2.0,2.00
+,Shrine,1.0,1.00
+Cargo,Secure Storage Bay,4.0,2.80
+,Data Storage Bay,4.0,1.20
+,Cold Storage Bay,3.0,0.60
+,Spares,6.0,3.00
+,Cargo Bay,21.0,0.00
+,Vacuum Bay,1.0,0.20
+Vehicles,Air/Raft Truck,5.0,0.55
+Drones,Sensor (x4),4.0,4.00
+,Comms (x10),1.0,2.00
+,Centurion Security Robot (x2),1.0,0.24
+Total,,300.0,296.49
