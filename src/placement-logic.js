@@ -275,6 +275,87 @@ function findValidPosition(floorIndex, origX, origY, compLength, compWidth, floo
 }
 
 // ========================================
+// Components Spanning Floors
+// ========================================
+
+/**
+ * The placement entries that have to change together with one of them. A one-off
+ * component is one item, so all its entries belong together: it spans those floors,
+ * in the same spot on each. Multi-quantity items are separate rooms, and a component
+ * placed by tonnage can be split up any way, so those entries stand alone.
+ * @param {number} componentIndex - Index of the component
+ * @param {object} pos - Placement entry
+ * @returns {Array<object>} The entries, including pos
+ */
+function getLinkedEntries(componentIndex, pos) {
+    const component = shipData.components[componentIndex];
+    const placement = shipData.componentPlacements[componentIndex];
+    if (!component || !placement || !placement.floors.includes(pos)) return [pos];
+    if ((component.quantity || 1) !== 1 || canTakeIrregularSpace(component)) return [pos];
+    return placement.floors.slice();
+}
+
+/**
+ * Floors entries end up on when moved to a floor. If they are already on it they
+ * stay on the floors they have. Otherwise they all shift by the smallest amount
+ * that gets one of them there.
+ * @param {Array<object>} entries - Entries moving together
+ * @param {number} targetFloor - Floor they are moved to
+ * @returns {number[]|null} A floor for each entry, or null if they don't all fit in the ship
+ */
+function getFloorsAfterMove(entries, targetFloor) {
+    const floors = entries.map(e => e.floor);
+    if (floors.includes(targetFloor)) return floors;
+    const offsets = floors.map(f => targetFloor - f).sort((a, b) => Math.abs(a) - Math.abs(b));
+    for (const offset of offsets) {
+        const shifted = floors.map(f => f + offset);
+        if (shifted.every(f => f >= 1 && f <= shipData.numFloors)) return shifted;
+    }
+    return null;
+}
+
+/**
+ * Run a check as if some entries of a placement weren't there, so they don't get in
+ * their own way
+ * @param {object} placement - Parent placement of the entries
+ * @param {Array<object>} entries - Entries to leave out
+ * @param {function} check - Check to run
+ * @returns {*} What the check returns
+ */
+function withoutEntries(placement, entries, check) {
+    const all = placement.floors;
+    placement.floors = all.filter(e => !entries.includes(e));
+    try {
+        return check();
+    } finally {
+        placement.floors = all;
+    }
+}
+
+/**
+ * Whether a rectangle fits and is clear on all the floors it would go on
+ * @param {object} placement - Parent placement of the entries being changed
+ * @param {Array<object>} entries - Entries being changed, which don't count as in the way
+ * @param {number[]} floors - Floors it would go on
+ * @returns {boolean}
+ */
+function canPlaceOnFloors(placement, entries, floors, x, y, length, width, floorLength, floorWidth, armorThickness) {
+    return fitsFloor(floors, x, y, length, width, floorLength, floorWidth, armorThickness) &&
+        withoutEntries(placement, entries, () => floors.every(f => !checkOverlap(f, x, y, length, width, -1)));
+}
+
+/**
+ * Change entries that move together, keeping the entries themselves (their item count
+ * and numbering, and the undo history's hold on them)
+ * @param {Array<object>} entries - Entries to change
+ * @param {number[]} floors - A floor for each entry
+ * @param {object} fields - Fields they all get
+ */
+function updateLinkedEntries(entries, floors, fields) {
+    entries.forEach((entry, i) => Object.assign(entry, fields, { floor: floors[i] }));
+}
+
+// ========================================
 // Placement Mode Management
 // ========================================
 
@@ -323,5 +404,16 @@ function cancelPlacement() {
 
 // CommonJS export for Jest (no-op in browsers where `module` is undefined)
 if (typeof module !== 'undefined') {
-    module.exports = { isWithinUsableArea, fitsFloor, clampToFloor, checkOverlap, findValidPosition };
+    module.exports = {
+        isWithinUsableArea,
+        fitsFloor,
+        clampToFloor,
+        checkOverlap,
+        findValidPosition,
+        getLinkedEntries,
+        getFloorsAfterMove,
+        withoutEntries,
+        canPlaceOnFloors,
+        updateLinkedEntries
+    };
 }

@@ -7,11 +7,13 @@
  *              re-enters placement mode
  *   'delete' — a placement was deleted; undo silently restores it
  *   'fill'   — one or more region allocations were made ("fill rest of floor" or
- *              "fill region"); undo removes them all, redo restores them
+ *              "fill region"), or a component was placed across several floors;
+ *              undo removes them all, redo restores them
  *
  * 'place' and 'delete' entries keep the affected placement object in `entry`
  * (when available) so item counts and region shapes survive undo/redo; older
- * entries without it fall back to matching on floor/x/y.
+ * entries without it fall back to matching on floor/x/y. A 'delete' of a component
+ * spanning floors also keeps all its entries in `entries`.
  */
 
 // ========================================
@@ -99,8 +101,9 @@ function undoLastPlacement() {
         // Restore the deleted placement
         const entry = entryFromAction(action);
         action.entry = entry;
-        addPlacementEntry(componentIndex, entry);
-        redrawFloors([entry.floor]);
+        const restored = action.entries || [entry];
+        restored.forEach(e => addPlacementEntry(componentIndex, e));
+        redrawFloors(restored.map(e => e.floor));
         renderComponents();
         return;
     }
@@ -173,7 +176,12 @@ function redoLastPlacement() {
 
     if (action.type === 'delete') {
         // Redo the deletion: remove it again
-        removePlacementEntry(componentIndex, action);
+        const deleted = action.entries || [action.entry];
+        deleted.forEach(e => removePlacementEntry(componentIndex, action, e));
+        uiState.placementHistory.push(action);
+        redrawFloors(deleted.map(e => e ? e.floor : action.floor));
+        renderComponents();
+        return;
     } else {
         // Redo the placement: add it back
         const entry = entryFromAction(action);

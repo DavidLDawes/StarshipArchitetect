@@ -173,6 +173,13 @@ function handleCanvasMouseMove(event, floorIndex) {
         compWidth = sel.width;
         excludeIndex = sel.componentIndex;
         componentIndex = sel.componentIndex;
+        // A component spanning floors moves as a whole, so it has to fit all of them
+        const pos = shipData.componentPlacements[componentIndex].floors[sel.placementIndex];
+        fitFloors = getFloorsAfterMove(getLinkedEntries(componentIndex, pos), floorIndex);
+        if (!fitFloors) {
+            clearPreview();
+            return;
+        }
         if (sel.roomShape) room = getSelectedRoom(sel);
     } else {
         clearPreview();

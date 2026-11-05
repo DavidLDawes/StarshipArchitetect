@@ -244,52 +244,40 @@ function handleComponentMove(event, floorIndex) {
         return;
     }
 
+    // A component spanning floors moves as a whole, so it has to fit all of them
+    const placement = shipData.componentPlacements[sel.componentIndex];
+    const entries = getLinkedEntries(sel.componentIndex, placement.floors[sel.placementIndex]);
+    const oldFloors = entries.map(e => e.floor);
+    const floors = getFloorsAfterMove(entries, floorIndex);
+    if (!floors) {
+        flashBlocked(canvas);
+        return;
+    }
+
     // Center component on click
     let newX = clickX - sel.length / 2;
     let newY = clickY - sel.width / 2;
 
     // Clamp to usable area (respecting the hull and armor of the target floor)
     const armorThickness = shipData.armorThickness || 0;
-    ({ x: newX, y: newY } = clampToFloor(floorIndex, newX, newY, sel.length, sel.width,
+    ({ x: newX, y: newY } = clampToFloor(floors, newX, newY, sel.length, sel.width,
         floorLength, floorWidth, armorThickness));
 
     // Weapons, vehicles, and launch bays stay against the outer hull
     if (requiresHullAccess(shipData.components[sel.componentIndex])) {
-        ({ x: newX, y: newY } = snapToFloorHull(floorIndex, newX, newY, sel.length, sel.width,
+        ({ x: newX, y: newY } = snapToFloorHull(floors, newX, newY, sel.length, sel.width,
             floorLength, floorWidth, armorThickness));
     }
 
     // Do not round here — allow fine-grained movement when dragging selected components
 
-    // Remove the old placement temporarily to check overlap
-    const placement = shipData.componentPlacements[sel.componentIndex];
-    const oldPlacement = placement.floors[sel.placementIndex];
-    placement.floors.splice(sel.placementIndex, 1);
-
-    // Check it fits this floor and has no overlap at the new position
-    const blocked = !fitsFloor(floorIndex, newX, newY, sel.length, sel.width, floorLength, floorWidth, armorThickness) ||
-        checkOverlap(floorIndex, newX, newY, sel.length, sel.width, -1);
-
-    if (blocked) {
-        // Restore old position and show error
-        placement.floors.splice(sel.placementIndex, 0, oldPlacement);
-        canvas.style.boxShadow = '0 0 20px red';
-        setTimeout(() => {
-            canvas.style.boxShadow = '';
-        }, 300);
+    // Check it fits these floors and has no overlap at the new position
+    if (!canPlaceOnFloors(placement, entries, floors, newX, newY, sel.length, sel.width, floorLength, floorWidth, armorThickness)) {
+        flashBlocked(canvas);
         return;
     }
 
-    // Re-insert the same entry at its new position (keeps item count, numbering,
-    // and object identity for undo history)
-    Object.assign(oldPlacement, {
-        floor: floorIndex,
-        x: newX,
-        y: newY,
-        length: sel.length,
-        width: sel.width
-    });
-    placement.floors.splice(sel.placementIndex, 0, oldPlacement);
+    updateLinkedEntries(entries, floors, { x: newX, y: newY, length: sel.length, width: sel.width });
 
     // Clear selection and preview
     uiState.selectedPlacement = null;
@@ -298,37 +286,35 @@ function handleComponentMove(event, floorIndex) {
     hideSelectionInstructions();
 
     // Redraw affected floors
-    const oldCanvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
-    if (oldCanvas && sel.floorIndex !== floorIndex) {
-        drawFloorWithComponents(oldCanvas, sel.floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
-    }
-    drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
+    redrawFloors(oldFloors.concat(floors));
+}
+
+/**
+ * Show that something can't go where it was asked to
+ */
+function flashBlocked(canvas) {
+    canvas.style.boxShadow = '0 0 20px red';
+    setTimeout(() => {
+        canvas.style.boxShadow = '';
+    }, 300);
 }
 
 /**
  * Finish moving or turning a circle or arc
  * @param {object} room - Where it goes
+ * @param {Array<object>} entries - Entries moving together
+ * @param {number[]} floors - A floor for each entry
  * @returns {boolean} True if it could go there
  */
-function commitRoomMove(sel, room, floors, canvas) {
+function commitRoomMove(sel, room, entries, floors, canvas) {
     const placement = shipData.componentPlacements[sel.componentIndex];
-    const pos = placement.floors[sel.placementIndex];
-
-    // Take the room out while checking, so it doesn't get in its own way
-    placement.floors.splice(sel.placementIndex, 1);
-    const blocked = !room || !isRoomClear(room, floors, -1);
-    placement.floors.splice(sel.placementIndex, 0, pos);
-
-    if (blocked) {
-        canvas.style.boxShadow = '0 0 20px red';
-        setTimeout(() => {
-            canvas.style.boxShadow = '';
-        }, 300);
+    if (!room || !withoutEntries(placement, entries, () => isRoomClear(room, floors, -1))) {
+        flashBlocked(canvas);
         return false;
     }
 
-    const { floor, x, y, length, width } = room;
-    Object.assign(pos, { floor, x, y, length, width }, getRoomFields(room));
+    const { x, y, length, width } = room;
+    updateLinkedEntries(entries, floors, { x, y, length, width, ...getRoomFields(room) });
     return true;
 }
 
@@ -337,20 +323,19 @@ function commitRoomMove(sel, room, floors, canvas) {
  */
 function moveSelectedRoom(sel, floorIndex, clickX, clickY, canvas) {
     const requireHull = requiresHullAccess(shipData.components[sel.componentIndex]);
-    const room = positionRoom(getSelectedRoom(sel), [floorIndex], clickX, clickY, requireHull);
-    if (!commitRoomMove(sel, room, [floorIndex], canvas)) return;
+    const pos = shipData.componentPlacements[sel.componentIndex].floors[sel.placementIndex];
+    const entries = getLinkedEntries(sel.componentIndex, pos);
+    const oldFloors = entries.map(e => e.floor);
+    const floors = getFloorsAfterMove(entries, floorIndex);
+    const room = floors && positionRoom(getSelectedRoom(sel), floors, clickX, clickY, requireHull);
+    if (!commitRoomMove(sel, room, entries, floors, canvas)) return;
 
     uiState.selectedPlacement = null;
     clearPreview();
     canvas.classList.remove('selection-mode');
     hideSelectionInstructions();
 
-    const { floorWidth, floorLength } = getCurrentFloorDimensions();
-    const oldCanvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
-    if (oldCanvas && sel.floorIndex !== floorIndex) {
-        drawFloorWithComponents(oldCanvas, sel.floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
-    }
-    drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
+    redrawFloors(oldFloors.concat(floors));
 }
 
 /**
@@ -360,15 +345,17 @@ function moveSelectedRoom(sel, floorIndex, clickX, clickY, canvas) {
 function rotateSelectedRoom(sel, pos) {
     if (pos.roomShape !== 'arc') return;
     const canvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
-    if (!canvas || !commitRoomMove(sel, turnArcRoom(pos, Math.PI / 2), [sel.floorIndex], canvas)) return;
+    const entries = getLinkedEntries(sel.componentIndex, pos);
+    const floors = entries.map(e => e.floor);
+    if (!canvas || !commitRoomMove(sel, turnArcRoom(pos, Math.PI / 2), entries, floors, canvas)) return;
 
     sel.length = pos.length;
     sel.width = pos.width;
     sel.originalX = pos.x;
     sel.originalY = pos.y;
 
-    const { floorWidth, floorLength } = getCurrentFloorDimensions();
-    drawFloorWithComponents(canvas, sel.floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
+    const { floorLength } = getCurrentFloorDimensions();
+    redrawFloors(floors);
     drawRoomSelectionHighlight(canvas, pos, canvas.width / floorLength);
 }
 
@@ -394,6 +381,10 @@ function rotateSelectedComponent() {
         return;
     }
 
+    // A component spanning floors turns as a whole, so it has to fit all of them
+    const entries = getLinkedEntries(sel.componentIndex, pos);
+    const floors = entries.map(e => e.floor);
+
     // Calculate new rotated dimensions
     const newLength = sel.width;
     const newWidth = sel.length;
@@ -407,7 +398,7 @@ function rotateSelectedComponent() {
 
     // Adjust position if rotation would push it out of bounds (respect hull and armor)
     const armorThickness = shipData.armorThickness || 0;
-    ({ x: newX, y: newY } = clampToFloor(sel.floorIndex, newX, newY, newLength, newWidth,
+    ({ x: newX, y: newY } = clampToFloor(floors, newX, newY, newLength, newWidth,
         floorLength, floorWidth, armorThickness));
 
     // Hull components keep their hull side: re-anchor to the side they were on
@@ -418,35 +409,20 @@ function rotateSelectedComponent() {
             if (sides.includes('right')) newX = floorLength - armorThickness - newLength;
             if (sides.includes('bottom')) newY = floorWidth - armorThickness - newWidth;
         }
-        if (!touchesFloorHull(sel.floorIndex, newX, newY, newLength, newWidth, floorLength, floorWidth, armorThickness)) {
-            ({ x: newX, y: newY } = snapToFloorHull(sel.floorIndex, newX, newY, newLength, newWidth,
+        if (!touchesFloorHull(floors, newX, newY, newLength, newWidth, floorLength, floorWidth, armorThickness)) {
+            ({ x: newX, y: newY } = snapToFloorHull(floors, newX, newY, newLength, newWidth,
                 floorLength, floorWidth, armorThickness));
         }
     }
 
-    // Temporarily remove to check overlap
-    placement.floors.splice(sel.placementIndex, 1);
-
-    // Check it still fits the floor and has no overlap with the new dimensions
-    const blocked = !fitsFloor(sel.floorIndex, newX, newY, newLength, newWidth, floorLength, floorWidth, armorThickness) ||
-        checkOverlap(sel.floorIndex, newX, newY, newLength, newWidth, -1);
-
-    if (blocked) {
-        // Restore old position and show error
-        placement.floors.splice(sel.placementIndex, 0, pos);
+    // Check it still fits the floors and has no overlap with the new dimensions
+    if (!canPlaceOnFloors(placement, entries, floors, newX, newY, newLength, newWidth, floorLength, floorWidth, armorThickness)) {
         const canvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
-        if (canvas) {
-            canvas.style.boxShadow = '0 0 20px red';
-            setTimeout(() => {
-                canvas.style.boxShadow = '';
-            }, 300);
-        }
+        if (canvas) flashBlocked(canvas);
         return;
     }
 
-    // Re-insert the same entry rotated (keeps item count and identity)
-    Object.assign(pos, { x: newX, y: newY, length: newLength, width: newWidth });
-    placement.floors.splice(sel.placementIndex, 0, pos);
+    updateLinkedEntries(entries, floors, { x: newX, y: newY, length: newLength, width: newWidth });
 
     // Update selection state with new dimensions and position
     sel.length = newLength;
@@ -454,11 +430,11 @@ function rotateSelectedComponent() {
     sel.originalX = newX;
     sel.originalY = newY;
 
-    // Redraw the floor
+    // Redraw the floors
+    redrawFloors(floors);
     const canvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
     if (canvas) {
         const pixelsPerMeter = canvas.width / floorLength;
-        drawFloorWithComponents(canvas, sel.floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
         drawSelectionHighlight(canvas, newX, newY, newLength, newWidth, pixelsPerMeter);
     }
 }
@@ -480,6 +456,9 @@ function deleteSelectedComponent() {
     const pos = placement.floors[sel.placementIndex];
     if (!pos) return;
 
+    // A component spanning floors goes as a whole
+    const entries = getLinkedEntries(sel.componentIndex, pos);
+
     // Add to undo history before deleting
     uiState.placementHistory.push({
         type: 'delete',
@@ -489,14 +468,15 @@ function deleteSelectedComponent() {
         y: pos.y,
         length: sel.length,
         width: sel.width,
-        entry: pos // full entry, so item count and region shape are restored on undo
+        entry: pos, // full entry, so item count and region shape are restored on undo
+        entries
     });
 
     // Clear redo history since we made a new action
     uiState.redoHistory = [];
 
     // Remove the placement
-    placement.floors.splice(sel.placementIndex, 1);
+    placement.floors = placement.floors.filter(e => !entries.includes(e));
 
     // If no more placements for this component, remove the entry
     if (placement.floors.length === 0) {
@@ -507,13 +487,10 @@ function deleteSelectedComponent() {
     const floorIndex = sel.floorIndex;
     uiState.selectedPlacement = null;
 
-    // Redraw the floor
+    // Redraw the floors
     const canvas = document.getElementById(`floor-canvas-${floorIndex}`);
-    if (canvas) {
-        canvas.classList.remove('selection-mode');
-        const { floorWidth, floorLength } = getCurrentFloorDimensions();
-        drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
-    }
+    if (canvas) canvas.classList.remove('selection-mode');
+    redrawFloors(entries.map(e => e.floor));
 
     hideSelectionInstructions();
 

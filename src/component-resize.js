@@ -16,6 +16,8 @@ let resizeState = {
     componentIndex: null,
     placementIndex: null,
     floorIndex: null,
+    entries: null, // Entries resized together: a component spanning floors stays the same on each
+    floors: null, // The floors those entries are on
     originalX: null,
     originalY: null,
     originalLength: null,
@@ -211,6 +213,8 @@ function startResize(edge, componentIndex, placementIndex, floorIndex, mouseX, m
     resizeState.componentIndex = componentIndex;
     resizeState.placementIndex = placementIndex;
     resizeState.floorIndex = floorIndex;
+    resizeState.entries = getLinkedEntries(componentIndex, pos);
+    resizeState.floors = resizeState.entries.map(e => e.floor);
     resizeState.originalX = pos.x;
     resizeState.originalY = pos.y;
     resizeState.originalLength = length;
@@ -262,7 +266,7 @@ function updateResize(mouseX, mouseY, canvas) {
         resizeState.componentArea,
         resizeState.originalX,
         resizeState.originalY,
-        getFloorUsableBounds(resizeState.floorIndex, floorLength, floorWidth, shipData.armorThickness || 0)
+        getFloorUsableBounds(resizeState.floors, floorLength, floorWidth, shipData.armorThickness || 0)
     );
 
     // Update current state
@@ -289,11 +293,11 @@ function updateResize(mouseX, mouseY, canvas) {
 function isResizeValid(x, y, length, width) {
     const { floorLength, floorWidth } = getCurrentFloorDimensions();
     const armor = shipData.armorThickness || 0;
-    const floor = resizeState.floorIndex;
-    if (!fitsFloor(floor, x, y, length, width, floorLength, floorWidth, armor)) return false;
-    if (checkOverlap(floor, x, y, length, width, resizeState.componentIndex)) return false;
+    const { floors } = resizeState;
+    if (!fitsFloor(floors, x, y, length, width, floorLength, floorWidth, armor)) return false;
+    if (floors.some(f => checkOverlap(f, x, y, length, width, resizeState.componentIndex))) return false;
     return !requiresHullAccess(shipData.components[resizeState.componentIndex]) ||
-        touchesFloorHull(floor, x, y, length, width, floorLength, floorWidth, armor);
+        touchesFloorHull(floors, x, y, length, width, floorLength, floorWidth, armor);
 }
 
 /**
@@ -332,22 +336,21 @@ function commitResize() {
         // Rounding can nudge a hull component up to 5 cm off the hull; put it back
         const armor = shipData.armorThickness || 0;
         if (requiresHullAccess(shipData.components[resizeState.componentIndex]) &&
-            !touchesFloorHull(resizeState.floorIndex, rounded.x, rounded.y, rounded.length, rounded.width, floorLength, floorWidth, armor)) {
-            Object.assign(rounded, snapToFloorHull(resizeState.floorIndex, rounded.x, rounded.y, rounded.length, rounded.width, floorLength, floorWidth, armor));
+            !touchesFloorHull(resizeState.floors, rounded.x, rounded.y, rounded.length, rounded.width, floorLength, floorWidth, armor)) {
+            Object.assign(rounded, snapToFloorHull(resizeState.floors, rounded.x, rounded.y, rounded.length, rounded.width, floorLength, floorWidth, armor));
         }
 
         // Rounding can also push it into the armor or a neighbor; the exact size
         // was checked above, so keep that instead
-        if (isResizeValid(rounded.x, rounded.y, rounded.length, rounded.width)) {
-            Object.assign(pos, rounded);
-        } else {
-            Object.assign(pos, {
+        const size = isResizeValid(rounded.x, rounded.y, rounded.length, rounded.width)
+            ? rounded
+            : {
                 x: resizeState.currentX,
                 y: resizeState.currentY,
                 length: resizeState.currentLength,
                 width: resizeState.currentWidth
-            });
-        }
+            };
+        updateLinkedEntries(resizeState.entries, resizeState.floors, size);
 
         const newArea = pos.length * pos.width;
         console.log(`Resize committed: ${resizeState.originalLength}×${resizeState.originalWidth} -> ${pos.length}×${pos.width} (area: ${resizeState.componentArea.toFixed(2)}m² -> ${newArea.toFixed(2)}m²)`);
@@ -365,11 +368,10 @@ function commitResize() {
         }
     }
 
-    // Redraw floor with selection highlight (keep component selected)
+    // Redraw floors with selection highlight (keep component selected)
+    redrawFloors(resizeState.floors);
     const canvas = document.getElementById(`floor-canvas-${resizeState.floorIndex}`);
     if (canvas) {
-        drawFloorWithComponents(canvas, resizeState.floorIndex, floorLength, floorWidth,
-            shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
 
         // Draw selection highlight if component is still selected
         if (uiState.selectedPlacement &&
@@ -415,6 +417,8 @@ function resetResizeState() {
     resizeState.edge = null;
     resizeState.componentIndex = null;
     resizeState.placementIndex = null;
+    resizeState.entries = null;
+    resizeState.floors = null;
     resizeState.floorIndex = null;
     resizeState.originalX = null;
     resizeState.originalY = null;
