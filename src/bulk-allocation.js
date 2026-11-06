@@ -9,6 +9,9 @@
  *                 assigned however many items fit
  *   fill-exposed — line the free stretches of outer hull on a chosen floor with
  *                 items (weapons, vehicles, launch bays: see hull-access.js)
+ *   fill-rings  — on a round floor, fill rings from the wall in and then slices of
+ *                 the center (see ring-rooms.js). Hull components only get the ring
+ *                 against the wall.
  *
  * Components that need hull access get single / block / fill-exposed; all
  * others get single / block / fill-floor / fill-region.
@@ -213,6 +216,10 @@ function setupAllocationSection(componentIndex) {
 
     section.classList.remove('hidden');
     document.getElementById('allocation-block-option').classList.toggle('hidden', byTons);
+    document.getElementById('allocation-fill-rings-option').classList.toggle('hidden', !isRoundHull());
+    document.getElementById('allocation-fill-rings-text').textContent = requiresHullAccess(component)
+        ? 'Fill the ring against the wall'
+        : 'Fill rings from the wall in, then slices of the center';
     document.getElementById('allocation-single-text').textContent = byTons ? 'All that is left as one room' : 'One at a time';
     document.getElementById('allocation-fill-floor-text').textContent = byTons
         ? 'Fill free space on the selected floor, any shape'
@@ -301,10 +308,10 @@ function updateAllocationUI() {
     const singleUsesMultiFloor = modal.dataset.singleUsesMultiFloor === 'true';
     multiFloorSection.classList.toggle('hidden', !(mode === 'single' && singleUsesMultiFloor));
     floorSelect.classList.toggle('hidden', mode === 'single' && singleUsesMultiFloor);
-    setRowVisible('dimensions-row', mode === 'single' || mode === 'block' || mode === 'fill-exposed');
+    setRowVisible('dimensions-row', mode === 'single' || mode === 'block' || mode === 'fill-exposed' || mode === 'fill-rings');
     setRowVisible('floor-select-row', mode !== 'fill-region');
-    document.getElementById('dimensions-label').textContent =
-        mode === 'fill-exposed' ? 'Item size (along hull × depth):' : 'Dimensions:';
+    const dimensionLabels = { 'fill-exposed': 'Item size (along hull × depth):', 'fill-rings': 'Ring depth:' };
+    document.getElementById('dimensions-label').textContent = dimensionLabels[mode] || 'Dimensions:';
 
     if (mode === 'single') {
         preview.textContent = '';
@@ -321,6 +328,10 @@ function updateAllocationUI() {
         document.getElementById('modal-area-display').classList.add('hidden');
         populateItemSizeOptions(component);
         updateFillExposedPreview();
+    } else if (mode === 'fill-rings') {
+        document.getElementById('modal-area-display').classList.add('hidden');
+        populateRingDepthOptions(component);
+        updateRingFillPreview();
     } else {
         document.getElementById('modal-area-display').classList.add('hidden');
         preview.classList.remove('warning');
@@ -589,6 +600,119 @@ function executeExposedFill() {
     if (selector && selector.value !== 'all') {
         setFloorSelector(floorIndex);
     }
+}
+
+// ========================================
+// Fill Rings (round floors)
+// ========================================
+
+/**
+ * Fill the dropdown with ring depths for the selected floor
+ */
+function populateRingDepthOptions(component) {
+    const floorIndex = parseInt(document.getElementById('component-floor-select').value, 10);
+    const itemArea = canTakeIrregularSpace(component) ? 0 : calculateComponentArea(component);
+    const dimSelect = document.getElementById('component-dimensions');
+    dimSelect.innerHTML = '';
+    for (const depth of getRingFillDepths([floorIndex], itemArea)) {
+        const option = document.createElement('option');
+        option.value = depth;
+        option.textContent = `Rings about ${depth.toFixed(1)} m deep`;
+        dimSelect.appendChild(option);
+    }
+}
+
+/**
+ * Plan filling the selected floor with what's left of a component
+ * @returns {Array<object>} Room entries from planRingFill
+ */
+function planRingFillForFloor(componentIndex, floorIndex) {
+    const component = shipData.components[componentIndex];
+    const depth = parseFloat(document.getElementById('component-dimensions').value);
+    const remaining = getRemainingCount(componentIndex);
+    const what = canTakeIrregularSpace(component)
+        ? { totalArea: tonsToArea(remaining) }
+        : { itemArea: calculateComponentArea(component), count: remaining };
+    return planRingFill([floorIndex], depth, what, requiresHullAccess(component));
+}
+
+/**
+ * Fill-rings mode: show what filling the selected floor would do
+ */
+function updateRingFillPreview() {
+    const componentIndex = parseInt(document.getElementById('component-modal').dataset.componentIndex, 10);
+    const component = shipData.components[componentIndex];
+    if (!component) return;
+
+    const preview = document.getElementById('allocation-preview');
+    const floorIndex = parseInt(document.getElementById('component-floor-select').value, 10);
+    const remaining = getRemainingCount(componentIndex);
+    const byTons = canTakeIrregularSpace(component);
+    if (remaining <= 0) {
+        preview.classList.remove('warning');
+        preview.textContent = byTons ? 'All of it is already placed.' : 'All items are already placed.';
+        setPlaceButton('Fill Rings', false);
+        return;
+    }
+
+    const plan = planRingFillForFloor(componentIndex, floorIndex);
+    if (plan.length === 0) {
+        preview.classList.add('warning');
+        preview.textContent = `Floor ${floorIndex} has no room for ${getItemDisplayName(component)} on a ring. Try another floor or depth.`;
+        setPlaceButton('Fill Rings', false);
+        return;
+    }
+
+    const rings = plan.filter((room, i) => i === 0 || room.ringOuter !== plan[i - 1].ringOuter);
+    const hasSlices = plan.some(room => room.ringInner === 0);
+    const ringCount = rings.length - (hasSlices ? 1 : 0);
+    const parts = [];
+    if (ringCount > 0) parts.push(ringCount === 1 ? '1 ring' : `${ringCount} rings`);
+    if (hasSlices) parts.push('the center');
+    const where = parts.join(' and ');
+
+    preview.classList.remove('warning');
+    if (byTons) {
+        const tons = plan.reduce((sum, room) => sum + getRoomArea(room), 0) * shipData.ceilingHeight / SQM_PER_TON;
+        preview.textContent = tons >= remaining - 0.01
+            ? `All ${remaining.toFixed(1)} tons left fit on Floor ${floorIndex}, in ${where}.`
+            : `Floor ${floorIndex} holds ${tons.toFixed(1)} of the ${remaining.toFixed(1)} tons left, in ${where}.`;
+        setPlaceButton(`Fill Floor ${floorIndex} with ${tons.toFixed(1)} tons`, true);
+        return;
+    }
+    preview.textContent = plan.length >= remaining
+        ? `All ${remaining} remaining go in ${where} on Floor ${floorIndex}.`
+        : `Floor ${floorIndex} holds ${plan.length} of ${remaining}, in ${where}, leaving ${remaining - plan.length} for other floors.`;
+    setPlaceButton(`Fill Floor ${floorIndex} with ${plan.length}`, true);
+}
+
+/**
+ * Execute fill-rings from the modal
+ */
+function executeRingFill() {
+    const componentIndex = parseInt(document.getElementById('component-modal').dataset.componentIndex, 10);
+    const component = shipData.components[componentIndex];
+    const floorIndex = parseInt(document.getElementById('component-floor-select').value, 10);
+    if (!component || !floorIndex) return;
+
+    const plan = planRingFillForFloor(componentIndex, floorIndex);
+    if (plan.length === 0) return;
+
+    if (canTakeIrregularSpace(component)) {
+        plan.forEach(room => { room.tons = getRoomArea(room) * shipData.ceilingHeight / SQM_PER_TON; });
+    }
+    closeComponentModal();
+
+    if (!shipData.componentPlacements[componentIndex]) shipData.componentPlacements[componentIndex] = { floors: [] };
+    shipData.componentPlacements[componentIndex].floors.push(...plan);
+    uiState.placementHistory.push({ type: 'fill', componentIndex, entries: plan });
+    uiState.redoHistory = [];
+    redrawFloors([floorIndex]);
+    renderComponents();
+
+    // If the user is viewing a single floor, switch to the one just filled
+    const selector = document.getElementById('floor-selector');
+    if (selector && selector.value !== 'all') setFloorSelector(floorIndex);
 }
 
 // ========================================
@@ -878,7 +1002,7 @@ function setupAllocationEvents() {
 
     document.getElementById('component-floor-select').addEventListener('change', () => {
         const mode = getAllocationMode();
-        if (mode === 'fill-floor' || mode === 'block') updateAllocationUI();
+        if (mode === 'fill-floor' || mode === 'block' || mode === 'fill-rings') updateAllocationUI();
         else if (mode === 'fill-exposed') {
             populateItemSizeOptions(shipData.components[parseInt(document.getElementById('component-modal').dataset.componentIndex, 10)]);
             updateFillExposedPreview();
@@ -891,6 +1015,7 @@ function setupAllocationEvents() {
 
     document.getElementById('component-dimensions').addEventListener('change', () => {
         if (getAllocationMode() === 'fill-exposed') updateFillExposedPreview();
+        else if (getAllocationMode() === 'fill-rings') updateRingFillPreview();
         else moveFloorsToRoomChoice();
     });
 }

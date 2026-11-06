@@ -9,9 +9,12 @@
  *                                               the floor's own wall. arcAngle is the
  *                                               direction (radians) from the floor's
  *                                               center to the middle of that side.
+ *   { roomShape: 'ring', ... }                  a section of a ring or a slice of pie: see
+ *                                               ring-rooms.js
  *
- * Every shape is convex, so the room's outline is a convex polygon and all the exact
- * fit and overlap checks work on that (getRoomOutline). Anything built on rectangles,
+ * A circle or arc is convex, so its outline is a convex polygon. A ring room is cut
+ * into convex pieces, and all the exact overlap checks work on those (getRoomPieces),
+ * with the true shape for drawing in getRoomContours. Anything built on rectangles,
  * such as free-space analysis, gets the room as thin bands instead (getRoomRects). As
  * with a curved hull, those bands can poke slightly past the true outline, so a free
  * region can poke slightly into a room. Rooms are drawn on top of regions to hide it,
@@ -23,6 +26,7 @@
  * - floor-utils.js (getCurrentFloorDimensions, getShipGeometry)
  * - placement-geometry.js (getPlacementRects)
  * - component-dimensions.js (calculateComponentArea)
+ * - ring-rooms.js (ring sections and slices of pie)
  */
 
 /** Radii closer than this (meters) count as the same */
@@ -103,7 +107,7 @@ function getFloorsWithRadius(radius) {
  * @returns {number[]} Floor numbers
  */
 function getFloorsForRoom(room, floorIndex) {
-    if (room.roomShape === 'arc') return getFloorsWithRadius(getArcRadius(floorIndex));
+    if (room.roomShape === 'arc' || room.roomShape === 'ring') return getFloorsWithRadius(getArcRadius(floorIndex));
     return Array.from({ length: shipData.numFloors }, (_, i) => i + 1);
 }
 
@@ -138,45 +142,88 @@ function arcRoomPolygon(inner, angle, area) {
 
 const roomShapeCache = new WeakMap();
 
+/** What a room's shape depends on, besides the ship */
+const ROOM_SHAPE_FIELDS = ['floor', 'x', 'y', 'length', 'arcAngle', 'arcArea', 'ringOuter', 'ringInner', 'ringAngle', 'ringSweep'];
+
 /**
- * Outline and bands of a room. These are looked up constantly during a drag, so
+ * Outline and pieces of a room. These are looked up constantly during a drag, so
  * they are kept until the room or the ship changes.
  * @param {object} pos - Room entry
- * @returns {{outline: Array<[number, number]>, bands: Array<object>}}
+ * @returns {{outline: Array<[number, number]>, contours: Array, pieces: Array, bands: Array|null}}
  */
 function getRoomShape(pos) {
-    const geometry = pos.roomShape === 'arc' ? getShipGeometry() : null;
+    const geometry = pos.roomShape === 'circle' ? null : getShipGeometry();
     const cached = roomShapeCache.get(pos);
-    if (cached && cached.geometry === geometry && cached.floor === pos.floor &&
-        cached.x === pos.x && cached.y === pos.y && cached.length === pos.length &&
-        cached.arcAngle === pos.arcAngle && cached.arcArea === pos.arcArea) {
+    if (cached && cached.geometry === geometry && ROOM_SHAPE_FIELDS.every(f => cached.fields[f] === pos[f])) {
         return cached;
     }
 
-    const outline = pos.roomShape === 'arc'
-        ? arcRoomPolygon(getFloorInnerPolygon(pos.floor), pos.arcAngle, pos.arcArea)
-        : circlePolygon(pos.x + pos.length / 2, pos.y + pos.length / 2, pos.length / 2);
-    const box = getPolygonBounds(outline);
-    const step = box ? Math.min(HULL_BAND_STEP, box.width / 8) : HULL_BAND_STEP;
-    const bands = outline.length > 0
-        ? getHullBands(outline, step).map(b => ({ x: b.x0, y: b.y, length: b.x1 - b.x0, width: b.height }))
-        : [];
+    const fields = {};
+    ROOM_SHAPE_FIELDS.forEach(f => { fields[f] = pos[f]; });
 
-    const shape = {
-        geometry, floor: pos.floor, x: pos.x, y: pos.y, length: pos.length,
-        arcAngle: pos.arcAngle, arcArea: pos.arcArea, outline, bands
-    };
+    let shape;
+    if (pos.roomShape === 'ring') {
+        const contours = getRingContours(pos);
+        shape = { outline: contours[0] || [], contours, pieces: getRingPieces(pos) };
+    } else {
+        const outline = pos.roomShape === 'arc'
+            ? arcRoomPolygon(getFloorInnerPolygon(pos.floor), pos.arcAngle, pos.arcArea)
+            : circlePolygon(pos.x + pos.length / 2, pos.y + pos.length / 2, pos.length / 2);
+        shape = { outline, contours: [outline], pieces: [outline] };
+    }
+    Object.assign(shape, { geometry, fields, bands: null });
     roomShapeCache.set(pos, shape);
     return shape;
 }
 
 /**
- * Exact outline of a room
+ * Outline of a room's outside. Only a circle's or arc's is convex.
  * @param {object} pos - Room entry
- * @returns {Array<[number, number]>} Convex polygon
+ * @returns {Array<[number, number]>} Polygon
  */
 function getRoomOutline(pos) {
     return getRoomShape(pos).outline;
+}
+
+/**
+ * Outlines to draw a room with, using the even-odd rule: a whole ring also has a hole
+ * @param {object} pos - Room entry
+ * @returns {Array<Array<[number, number]>>} Polygons
+ */
+function getRoomContours(pos) {
+    return getRoomShape(pos).contours;
+}
+
+/**
+ * A room as convex pieces, for exact overlap checks
+ * @param {object} pos - Room entry
+ * @returns {Array<Array<[number, number]>>} Convex polygons
+ */
+function getRoomPieces(pos) {
+    return getRoomShape(pos).pieces;
+}
+
+/**
+ * Whether a point is inside a room
+ * @param {object} pos - Room entry
+ * @returns {boolean}
+ */
+function isPointInRoom(pos, x, y) {
+    return pos.roomShape === 'ring' ? isPointInRingRoom(pos, x, y) : isPointInConvexPolygon(getRoomOutline(pos), x, y);
+}
+
+/**
+ * Where a room's label goes
+ * @param {object} pos - Room entry
+ * @returns {{x, y, width}} Position, and how much width a level line has there (meters)
+ */
+function getRoomLabelSpot(pos) {
+    const spot = pos.roomShape === 'ring' ? getRingLabelSpot(pos, getRoomPieces(pos)) : null;
+    if (spot) return spot;
+    const outline = getRoomOutline(pos);
+    const center = getPolygonCentroid(outline);
+    const span = getPolygonSpan(outline, center.y);
+    return { x: center.x, y: center.y, width: span ? span[1] - span[0] : pos.length };
 }
 
 /**
@@ -185,7 +232,18 @@ function getRoomOutline(pos) {
  * @returns {Array<{x, y, length, width}>}
  */
 function getRoomRects(pos) {
-    return getRoomShape(pos).bands;
+    const shape = getRoomShape(pos);
+    if (shape.bands) return shape.bands;
+
+    if (pos.roomShape === 'ring') {
+        shape.bands = getRingRoomRects(shape.pieces);
+    } else if (shape.outline.length === 0) {
+        shape.bands = [];
+    } else {
+        const step = Math.min(HULL_BAND_STEP, getPolygonBounds(shape.outline).width / 8);
+        shape.bands = getHullBands(shape.outline, step).map(b => ({ x: b.x0, y: b.y, length: b.x1 - b.x0, width: b.height }));
+    }
+    return shape.bands;
 }
 
 /**
@@ -194,6 +252,7 @@ function getRoomRects(pos) {
  * @returns {number} Area in m²
  */
 function getRoomArea(pos) {
+    if (pos.roomShape === 'ring') return getRingRoomArea(pos);
     if (pos.roomShape === 'arc') return pos.arcArea;
     return Math.PI * (pos.length / 2) ** 2;
 }
@@ -206,6 +265,10 @@ function getRoomArea(pos) {
 function getRoomFields(room) {
     if (room.roomShape === 'arc') {
         return { roomShape: 'arc', arcAngle: room.arcAngle, arcArea: room.arcArea };
+    }
+    if (room.roomShape === 'ring') {
+        const { ringOuter, ringInner, ringAngle, ringSweep } = room;
+        return { roomShape: 'ring', ringOuter, ringInner, ringAngle, ringSweep };
     }
     return { roomShape: room.roomShape };
 }
@@ -238,15 +301,21 @@ function placementsOverlap(a, b, placementB, eps = ROOM_FIT_EPS) {
 
     if (rectsA && rectsB) return rectsA.some(r => rectsB.some(s => boxesOverlap(r, s, eps)));
     if (!rectsA && !rectsB) {
-        return boxesOverlap(a, b, eps) && doConvexPolygonsOverlap(getRoomOutline(a), getRoomOutline(b), eps);
+        if (a.roomShape === 'ring' && b.roomShape === 'ring') return ringRoomsOverlap(a, b, eps);
+        const piecesB = getRoomPieces(b);
+        return boxesOverlap(a, b, eps) &&
+            getRoomPieces(a).some(pa => piecesB.some(pb => doConvexPolygonsOverlap(pa, pb, eps)));
     }
 
     const room = rectsA ? b : a;
     const rects = rectsA || rectsB;
     const other = rectsA ? a : b;
-    const outline = getRoomOutline(room);
-    const hits = rects.filter(r => boxesOverlap(room, r, eps) &&
-        doConvexPolygonsOverlap(outline, rectanglePolygon(r.x, r.y, r.length, r.width), eps));
+    const pieces = getRoomPieces(room);
+    const hits = rects.filter(r => {
+        if (!boxesOverlap(room, r, eps)) return false;
+        const polygon = rectanglePolygon(r.x, r.y, r.length, r.width);
+        return pieces.some(piece => doConvexPolygonsOverlap(piece, polygon, eps));
+    });
     if (!(other.rects && other.rects.length > 0)) return hits.length > 0;
     const bands = getRoomRects(room);
     return hits.some(r => bands.some(band => boxesOverlap(band, r, eps)));
@@ -301,6 +370,7 @@ function getCircleWallGap(pos, floors) {
  * @returns {boolean}
  */
 function isRoomFitting(room, floors) {
+    if (room.roomShape === 'ring') return isRingRoomFitting(room, floors);
     if (room.roomShape === 'arc') {
         const radius = getArcRadius(floors[0]);
         return radius > 0 &&
@@ -318,6 +388,7 @@ function isRoomFitting(room, floors) {
  * @returns {boolean}
  */
 function roomTouchesHull(room, floors) {
+    if (room.roomShape === 'ring') return ringRoomTouchesHull(room, floors);
     if (room.roomShape === 'arc') return true;
     return getCircleWallGap(room, floors) <= ROOM_FIT_EPS;
 }
@@ -363,6 +434,7 @@ function buildCircleRoom(room, floors, cx, cy) {
  * @returns {object|null} Room entry, or null if it can't go on these floors
  */
 function positionRoom(room, floors, pointerX, pointerY, requireHull = false) {
+    if (room.roomShape === 'ring') return positionRingRoom(room, floors, pointerX, pointerY, requireHull);
     if (room.roomShape === 'arc') {
         const radius = room.radius || getArcRadius(floors[0]);
         if (!floors.every(f => Math.abs(getArcRadius(f) - radius) <= ROOM_RADIUS_EPS)) return null;
@@ -493,6 +565,7 @@ function findCircleSpot(start, room, floors, excludeComponentIndex) {
  * @returns {object|null} Room entry, or null if there is no room for it
  */
 function findRoomSpot(room, floors, pointerX, pointerY, excludeComponentIndex = -1, requireHull = false) {
+    if (room.roomShape === 'ring') return findRingSpot(room, floors, pointerX, pointerY, excludeComponentIndex, requireHull);
     const start = positionRoom(room, floors, pointerX, pointerY, requireHull);
     if (!start) return null;
     if (isRoomClear(start, floors, excludeComponentIndex)) return start;
@@ -561,7 +634,8 @@ function getArcOptions(floors, area, perFloorText) {
 
 /**
  * Curved shapes to offer for a component, in addition to the rectangles: a circle of
- * the same area, and on round floors an arc of the floor's radius.
+ * the same area, and on round floors an arc of the floor's radius, ring rooms and
+ * slices of pie.
  * @param {object} component
  * @param {number|number[]} floors - Floor number, or the floors a component spans
  * @param {number} numFloorsSelected - Floors the component's area is shared between
@@ -583,7 +657,7 @@ function getRoomShapeOptions(component, floors, numFloorsSelected = null) {
             label: `Circle, radius ${(diameter / 2).toFixed(1)} m (${diameter.toFixed(1)} m across)${perFloorText}`
         });
     }
-    return options.concat(getArcOptions(list, area, perFloorText));
+    return options.concat(getArcOptions(list, area, perFloorText), getRingOptions(component, list, area, perFloorText));
 }
 
 /**
@@ -594,7 +668,8 @@ function getRoomShapeOptions(component, floors, numFloorsSelected = null) {
  *   size depends on the way it faces.
  */
 function parseRoomChoice(value) {
-    const [kind, first, second] = String(value).split(':');
+    const [kind, first, second, third] = String(value).split(':');
+    if (kind === 'ring') return parseRingChoice(first, second, third);
     if (kind === 'circle') {
         const diameter = parseFloat(first);
         return diameter > 0 ? { roomShape: 'circle', length: diameter, width: diameter } : null;
@@ -619,6 +694,10 @@ if (typeof module !== 'undefined') {
         getFloorsForRoom,
         arcRoomPolygon,
         getRoomOutline,
+        getRoomContours,
+        getRoomPieces,
+        isPointInRoom,
+        getRoomLabelSpot,
         getRoomRects,
         getRoomArea,
         getRoomFields,

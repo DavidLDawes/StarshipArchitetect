@@ -172,7 +172,7 @@ function exportLayoutSvg(ship, options = {}) {
                     out.push(`        <circle cx="${svgNum(pos.x + radius)}" cy="${svgNum(pos.y + radius)}" r="${svgNum(radius)}" ` +
                         `fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="0.08"/>`);
                 } else if (pos.roomShape) {
-                    out.push(`        <path d="${polygonPath(getRoomOutline(pos))}" ` +
+                    out.push(`        <path d="${getRoomContours(pos).map(polygonPath).join(' ')}" fill-rule="evenodd" ` +
                         `fill="${colors.fill}" stroke="${colors.stroke}" stroke-width="0.08"/>`);
                 }
                 for (const r of pos.roomShape ? [] : rects) {

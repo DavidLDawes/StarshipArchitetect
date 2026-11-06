@@ -304,6 +304,10 @@ function startPlacement() {
         executeExposedFill();
         return;
     }
+    if (mode === 'fill-rings') {
+        executeRingFill();
+        return;
+    }
     const isBlock = mode === 'block';
     const blockCount = isBlock ? getBlockCount(componentIndex) : 1;
 

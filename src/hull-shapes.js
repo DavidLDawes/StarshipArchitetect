@@ -800,6 +800,7 @@ if (typeof module !== 'undefined') {
         polygonArea,
         polygonPerimeter,
         getPolygonBounds,
+        orientPolygon,
         rectanglePolygon,
         circlePolygon,
         roundedRectanglePolygon,

@@ -197,11 +197,15 @@
                             <input type="radio" name="allocation-mode" value="block">
                             <span>A block of
                                 <input type="number" id="block-count" class="block-count-input" min="1" value="1" aria-label="Items in block">
-                                items as one rectangle</span>
+                                items as one room</span>
                         </label>
                         <label class="allocation-mode" data-scope="interior">
                             <input type="radio" name="allocation-mode" value="fill-floor">
                             <span id="allocation-fill-floor-text">Fill the rest of the selected floor</span>
+                        </label>
+                        <label class="allocation-mode hidden" id="allocation-fill-rings-option">
+                            <input type="radio" name="allocation-mode" value="fill-rings">
+                            <span id="allocation-fill-rings-text">Fill rings from the wall in, then slices of the center</span>
                         </label>
                         <label class="allocation-mode" data-scope="interior">
                             <input type="radio" name="allocation-mode" value="fill-region">
@@ -257,6 +261,7 @@
     <script src="src/hull-access.js"></script>
     <script src="src/hull-shapes.js"></script>
     <script src="src/curved-rooms.js"></script>
+    <script src="src/ring-rooms.js"></script>
     <script src="src/rec-health.js"></script>
     <script src="src/layout-io.js"></script>
     <script src="src/layout-export.js"></script>

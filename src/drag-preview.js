@@ -112,9 +112,9 @@ function drawRoomPreview(ctx, pixelsPerMeter) {
     const isValid = isRoomClear(previewState.room, [].concat(previewState.fitFloors), previewState.excludeComponentIndex);
 
     ctx.beginPath();
-    tracePolygon(ctx, getRoomOutline(previewState.room), pixelsPerMeter);
+    traceRoom(ctx, previewState.room, pixelsPerMeter);
     ctx.fillStyle = isValid ? 'rgba(0, 255, 100, 0.3)' : 'rgba(255, 0, 0, 0.3)';
-    ctx.fill();
+    ctx.fill('evenodd');
     ctx.strokeStyle = isValid ? 'rgba(0, 255, 100, 0.8)' : 'rgba(255, 0, 0, 0.8)';
     ctx.lineWidth = 2;
     ctx.setLineDash([5, 5]);
@@ -203,10 +203,14 @@ function handleCanvasMouseMove(event, floorIndex) {
     const mouseX = mousePxX / pixelsPerMeter;
     const mouseY = mousePxY / pixelsPerMeter;
 
-    // A circle or arc works out its own position
+    // A circle or arc works out its own position. A ring room shows where it will
+    // really go, as that can be further around its ring or on the next one in.
     if (room) {
-        const spot = positionRoom(room, [].concat(fitFloors), mouseX, mouseY,
-            requiresHullAccess(shipData.components[componentIndex]));
+        const needsHull = requiresHullAccess(shipData.components[componentIndex]);
+        let spot;
+        if (room.roomShape !== 'ring') spot = positionRoom(room, [].concat(fitFloors), mouseX, mouseY, needsHull);
+        else if (uiState.isPlacingComponent) spot = findRoomSpot(room, [].concat(fitFloors), mouseX, mouseY, -1, needsHull);
+        else spot = getMovedRingSpot(uiState.selectedPlacement, [].concat(fitFloors), mouseX, mouseY);
         if (!spot) {
             clearPreview();
             return;
