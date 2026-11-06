@@ -110,6 +110,14 @@ function tracePolygon(ctx, polygon, pixelsPerMeter) {
 }
 
 /**
+ * Add a circle, arc or ring room to the current canvas path. Fill it with the
+ * even-odd rule, as a whole ring has a hole in it.
+ */
+function traceRoom(ctx, pos, pixelsPerMeter) {
+    for (const contour of getRoomContours(pos)) tracePolygon(ctx, contour, pixelsPerMeter);
+}
+
+/**
  * Keep what is drawn next inside a curved or sloping floor's usable space. Free
  * regions are built from bands that can poke slightly past such a wall. Wrap this
  * in ctx.save() and ctx.restore().
@@ -441,28 +449,25 @@ function drawPlacedComponent(ctx, x, y, compLength, compWidth, component, pixels
 }
 
 /**
- * Draw a placed circle or arc on the canvas
+ * Draw a placed circle, arc or ring room on the canvas
  * @param {object} pos - Room entry
  * @param {number} placementNum - The individual item number (1, 2, 3, etc.)
  * @param {number} count - Number of items it holds
  */
 function drawPlacedRoom(ctx, pos, component, pixelsPerMeter, compIdx, placementNum, count) {
-    const outline = getRoomOutline(pos);
     const colors = getComponentColors(compIdx);
 
     ctx.beginPath();
-    tracePolygon(ctx, outline, pixelsPerMeter);
+    traceRoom(ctx, pos, pixelsPerMeter);
     ctx.fillStyle = colors.fill;
-    ctx.fill();
+    ctx.fill('evenodd');
     ctx.strokeStyle = colors.stroke;
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    const center = getPolygonCentroid(outline);
-    const span = getPolygonSpan(outline, center.y);
-    const labelWidth = span ? (span[1] - span[0]) * pixelsPerMeter : pos.length * pixelsPerMeter;
+    const spot = getRoomLabelSpot(pos);
     drawFittedLabel(ctx, getPlacementLabel(component, placementNum, count, pos.tons),
-        center.x * pixelsPerMeter, center.y * pixelsPerMeter, labelWidth);
+        spot.x * pixelsPerMeter, spot.y * pixelsPerMeter, spot.width * pixelsPerMeter);
 }
 
 /**

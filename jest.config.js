@@ -13,6 +13,7 @@ module.exports = {
     'src/hull-access.js',
     'src/hull-shapes.js',
     'src/curved-rooms.js',
+    'src/ring-rooms.js',
     'src/rec-health.js',
     'src/layout-io.js',
     'src/layout-export.js',

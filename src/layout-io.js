@@ -23,7 +23,7 @@
 // ========================================
 
 const LAYOUT_FORMAT = 'starship-architect-layout';
-const LAYOUT_VERSION = 4;
+const LAYOUT_VERSION = 5;
 
 /** Tons over a component's total that count as rounding when restoring */
 const LAYOUT_TONS_EPS = 0.01;
@@ -262,6 +262,11 @@ function cleanEntry(raw) {
     } else if (raw.roomShape === 'arc') {
         if (!isNum(raw.arcAngle) || !isNum(raw.arcArea) || raw.arcArea <= 0) return null;
         Object.assign(entry, { roomShape: 'arc', arcAngle: raw.arcAngle, arcArea: raw.arcArea });
+    } else if (raw.roomShape === 'ring') {
+        const { ringOuter, ringInner, ringAngle, ringSweep } = raw;
+        if (![ringOuter, ringInner, ringAngle, ringSweep].every(isNum)) return null;
+        if (ringInner < 0 || ringOuter <= ringInner || ringSweep <= 0 || ringSweep > FULL_TURN + LAYOUT_EPS) return null;
+        Object.assign(entry, { roomShape: 'ring', ringOuter, ringInner, ringAngle, ringSweep });
     } else if (raw.roomShape !== undefined) {
         return null;
     }
@@ -402,8 +407,9 @@ function restorePlacements(layout, components, floor) {
                 dropped++;
                 return;
             }
-            // An arc follows the wall, so its box comes from the floor as it is now
-            if (entry.roomShape === 'arc') {
+            // An arc or ring room goes by the floor's center and wall, so its box
+            // comes from the floor as it is now
+            if (entry.roomShape === 'arc' || entry.roomShape === 'ring') {
                 const box = getPolygonBounds(getRoomOutline(entry));
                 Object.assign(entry, { x: box.x, y: box.y, length: box.length, width: box.width });
             }

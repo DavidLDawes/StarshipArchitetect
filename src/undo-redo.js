@@ -125,10 +125,8 @@ function undoLastPlacement() {
     const entry = action.entry;
     if (entry && entry.roomShape) {
         Object.assign(uiState.placementData, getRoomFields(entry));
-        if (entry.roomShape === 'arc') {
-            uiState.placementData.radius = getArcRadius(floor);
-            uiState.placementData.floors = getFloorsForRoom(entry, floor);
-        }
+        if (entry.roomShape === 'arc') uiState.placementData.radius = getArcRadius(floor);
+        uiState.placementData.floors = getFloorsForRoom(entry, floor);
     }
 
     for (const f of allFloors) {

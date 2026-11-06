@@ -41,7 +41,7 @@ function handleComponentSelection(event, floorIndex) {
 
             // Check if click is inside this component (its outline, or any of its rectangles)
             const hit = pos.roomShape
-                ? isPointInConvexPolygon(getRoomOutline(pos), clickX, clickY)
+                ? isPointInRoom(pos, clickX, clickY)
                 : rects.some(r => clickX >= r.x && clickX <= r.x + r.length &&
                     clickY >= r.y && clickY <= r.y + r.width);
             if (hit) {
@@ -161,12 +161,12 @@ function drawShapeSelectionHighlight(canvas, rects, pixelsPerMeter, floorIndex) 
 }
 
 /**
- * Draw selection highlight on a circle or arc
+ * Draw selection highlight on a circle, arc or ring room
  */
 function drawRoomSelectionHighlight(canvas, pos, pixelsPerMeter) {
     const ctx = canvas.getContext('2d');
     ctx.beginPath();
-    tracePolygon(ctx, getRoomOutline(pos), pixelsPerMeter);
+    traceRoom(ctx, pos, pixelsPerMeter);
     ctx.strokeStyle = '#00ff00';
     ctx.lineWidth = 3;
     ctx.setLineDash([8, 4]);
@@ -175,7 +175,7 @@ function drawRoomSelectionHighlight(canvas, pos, pixelsPerMeter) {
 }
 
 /**
- * The selected circle or arc, ready to position. An arc stays cut to the radius of
+ * The selected circle, arc or ring room, ready to position. An arc stays cut to the radius of
  * the floor it is on, so it can't move to a floor of another size.
  * @param {object} sel - uiState.selectedPlacement
  * @returns {object} Room or placement data
@@ -200,7 +200,8 @@ function showSelectionInstructions(regionContents = '', roomShape = null) {
     }
     const roomText = {
         circle: 'Click to move | Delete to remove | Escape to cancel',
-        arc: 'Click to move around the wall | R/L to turn a quarter of the way around | Delete to remove | Escape to cancel'
+        arc: 'Click to move around the wall | R/L to turn a quarter of the way around | Delete to remove | Escape to cancel',
+        ring: 'Click to move around its ring | R/L to turn a quarter of the way around | Delete to remove | Escape to cancel'
     };
     instructions.textContent = regionContents
         ? `Region holding ${regionContents} | Delete to remove | Click elsewhere or Escape to deselect`
@@ -352,7 +353,21 @@ function commitRoomMove(sel, room, entries, floors, canvas) {
 }
 
 /**
- * Move a selected circle or arc to a clicked position
+ * Where a selected ring room would go when moved: the free spot on its ring nearest
+ * the pointer. It stays on its ring, as changing rings would change its shape.
+ * @param {object} sel - uiState.selectedPlacement
+ * @param {number[]} floors - Floors it would go on
+ * @returns {object|null} Room entry, or null if there is no room for it
+ */
+function getMovedRingSpot(sel, floors, pointerX, pointerY) {
+    const placement = shipData.componentPlacements[sel.componentIndex];
+    const pos = placement.floors[sel.placementIndex];
+    return withoutEntries(placement, getLinkedEntries(sel.componentIndex, pos), () =>
+        findRingSpot(pos, floors, pointerX, pointerY, -1, false, false));
+}
+
+/**
+ * Move a selected circle, arc or ring room to a clicked position
  */
 function moveSelectedRoom(sel, floorIndex, clickX, clickY, canvas) {
     const requireHull = requiresHullAccess(shipData.components[sel.componentIndex]);
@@ -360,7 +375,12 @@ function moveSelectedRoom(sel, floorIndex, clickX, clickY, canvas) {
     const entries = getLinkedEntries(sel.componentIndex, pos);
     const oldFloors = entries.map(e => e.floor);
     const floors = getFloorsAfterMove(entries, floorIndex);
-    const room = floors && positionRoom(getSelectedRoom(sel), floors, clickX, clickY, requireHull);
+    let room = null;
+    if (floors) {
+        room = pos.roomShape === 'ring'
+            ? getMovedRingSpot(sel, floors, clickX, clickY)
+            : positionRoom(getSelectedRoom(sel), floors, clickX, clickY, requireHull);
+    }
     if (!commitRoomMove(sel, room, entries, floors, canvas)) return;
 
     uiState.selectedPlacement = null;
@@ -372,15 +392,17 @@ function moveSelectedRoom(sel, floorIndex, clickX, clickY, canvas) {
 }
 
 /**
- * Turn a selected arc a quarter of the way around the wall. A circle looks the same
- * however it is turned.
+ * Turn a selected arc or ring room a quarter of the way around. A circle or a whole
+ * ring looks the same however it is turned.
  */
 function rotateSelectedRoom(sel, pos) {
-    if (pos.roomShape !== 'arc') return;
+    if (pos.roomShape === 'circle') return;
+    if (pos.roomShape === 'ring' && pos.ringSweep >= FULL_TURN) return;
     const canvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
     const entries = getLinkedEntries(sel.componentIndex, pos);
     const floors = entries.map(e => e.floor);
-    if (!canvas || !commitRoomMove(sel, turnArcRoom(pos, Math.PI / 2), entries, floors, canvas)) return;
+    const turned = pos.roomShape === 'ring' ? turnRingRoom(pos, Math.PI / 2) : turnArcRoom(pos, Math.PI / 2);
+    if (!canvas || !commitRoomMove(sel, turned, entries, floors, canvas)) return;
 
     sel.length = pos.length;
     sel.width = pos.width;
