@@ -14,6 +14,7 @@ module.exports = {
     'src/hull-shapes.js',
     'src/curved-rooms.js',
     'src/ring-rooms.js',
+    'src/corner-rooms.js',
     'src/rec-health.js',
     'src/layout-io.js',
     'src/layout-export.js',

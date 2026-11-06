@@ -203,14 +203,17 @@ function handleCanvasMouseMove(event, floorIndex) {
     const mouseX = mousePxX / pixelsPerMeter;
     const mouseY = mousePxY / pixelsPerMeter;
 
-    // A circle or arc works out its own position. A ring room shows where it will
-    // really go, as that can be further around its ring or on the next one in.
+    // A circle or arc works out its own position. A ring or corner room being placed
+    // shows where it will really go, as that can be further around its ring, on the
+    // next one in, or in another corner.
     if (room) {
         const needsHull = requiresHullAccess(shipData.components[componentIndex]);
+        const floors = [].concat(fitFloors);
+        const mayGoElsewhere = room.roomShape === 'ring' || room.roomShape === 'corner';
         let spot;
-        if (room.roomShape !== 'ring') spot = positionRoom(room, [].concat(fitFloors), mouseX, mouseY, needsHull);
-        else if (uiState.isPlacingComponent) spot = findRoomSpot(room, [].concat(fitFloors), mouseX, mouseY, -1, needsHull);
-        else spot = getMovedRingSpot(uiState.selectedPlacement, [].concat(fitFloors), mouseX, mouseY);
+        if (uiState.isPlacingComponent && mayGoElsewhere) spot = findRoomSpot(room, floors, mouseX, mouseY, -1, needsHull);
+        else if (room.roomShape === 'ring') spot = getMovedRingSpot(uiState.selectedPlacement, floors, mouseX, mouseY);
+        else spot = positionRoom(room, floors, mouseX, mouseY, needsHull);
         if (!spot) {
             clearPreview();
             return;

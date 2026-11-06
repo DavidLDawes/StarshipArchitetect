@@ -555,6 +555,7 @@ const sphereProfile = ({ u }) => Math.sqrt(1 - u * u);
  * - isRectangle: every floor is an axis-aligned rectangle
  * - isRound: every floor is a circle
  * - bow: which way the shape points on a floor plan, if it has a front
+ * - hasRoundedCorners: every floor is a rectangle with rounded corners
  * - defaultLength: length to use when the user hasn't chosen one
  */
 const HULL_SHAPES = {
@@ -668,6 +669,7 @@ const HULL_SHAPES = {
         general: 'streamlined',
         label: 'Lifting Body',
         freeLength: false,
+        hasRoundedCorners: true,
         bow: 'left',
         build(numFloors, totalArea) {
             const unitArea = polygonArea(roundedRectanglePolygon(

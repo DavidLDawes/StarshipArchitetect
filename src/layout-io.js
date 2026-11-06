@@ -23,7 +23,7 @@
 // ========================================
 
 const LAYOUT_FORMAT = 'starship-architect-layout';
-const LAYOUT_VERSION = 5;
+const LAYOUT_VERSION = 6;
 
 /** Tons over a component's total that count as rounding when restoring */
 const LAYOUT_TONS_EPS = 0.01;
@@ -163,6 +163,8 @@ const isNum = v => typeof v === 'number' && isFinite(v);
  * floors, so it stays rectangular even if its design file now names a shape.
  * Version 3 adds `tons` to entries placed by tonnage. An entry without it is worked
  * out from its floor area, so version 2 needs no changes.
+ * Versions 4 to 6 add room shapes (circle and arc, ring, rounded corner). An entry
+ * without one is a plain rectangle, so they need no changes either.
  * @param {object} layout
  * @returns {object}
  */
@@ -267,6 +269,12 @@ function cleanEntry(raw) {
         if (![ringOuter, ringInner, ringAngle, ringSweep].every(isNum)) return null;
         if (ringInner < 0 || ringOuter <= ringInner || ringSweep <= 0 || ringSweep > FULL_TURN + LAYOUT_EPS) return null;
         Object.assign(entry, { roomShape: 'ring', ringOuter, ringInner, ringAngle, ringSweep });
+    } else if (raw.roomShape === 'corner') {
+        const { cornerAt, cornerAxis, cornerArea, cornerFloor } = raw;
+        if (!Object.prototype.hasOwnProperty.call(CORNER_DIRECTIONS, cornerAt)) return null;
+        if ((cornerAxis !== 'x' && cornerAxis !== 'y') || !isNum(cornerArea) || cornerArea <= 0) return null;
+        if (!Number.isInteger(cornerFloor)) return null;
+        Object.assign(entry, { roomShape: 'corner', cornerAt, cornerAxis, cornerArea, cornerFloor });
     } else if (raw.roomShape !== undefined) {
         return null;
     }
@@ -407,9 +415,9 @@ function restorePlacements(layout, components, floor) {
                 dropped++;
                 return;
             }
-            // An arc or ring room goes by the floor's center and wall, so its box
-            // comes from the floor as it is now
-            if (entry.roomShape === 'arc' || entry.roomShape === 'ring') {
+            // An arc, ring or corner room goes by the floor's center and wall, so its
+            // box comes from the floor as it is now
+            if (entry.roomShape === 'arc' || entry.roomShape === 'ring' || entry.roomShape === 'corner') {
                 const box = getPolygonBounds(getRoomOutline(entry));
                 Object.assign(entry, { x: box.x, y: box.y, length: box.length, width: box.width });
             }

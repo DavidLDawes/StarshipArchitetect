@@ -201,7 +201,8 @@ function showSelectionInstructions(regionContents = '', roomShape = null) {
     const roomText = {
         circle: 'Click to move | Delete to remove | Escape to cancel',
         arc: 'Click to move around the wall | R/L to turn a quarter of the way around | Delete to remove | Escape to cancel',
-        ring: 'Click to move around its ring | R/L to turn a quarter of the way around | Delete to remove | Escape to cancel'
+        ring: 'Click to move around its ring | R/L to turn a quarter of the way around | Delete to remove | Escape to cancel',
+        corner: 'Click to move to another corner | R/L to continue along the other wall | Delete to remove | Escape to cancel'
     };
     instructions.textContent = regionContents
         ? `Region holding ${regionContents} | Delete to remove | Click elsewhere or Escape to deselect`
@@ -392,8 +393,9 @@ function moveSelectedRoom(sel, floorIndex, clickX, clickY, canvas) {
 }
 
 /**
- * Turn a selected arc or ring room a quarter of the way around. A circle or a whole
- * ring looks the same however it is turned.
+ * Turn a selected arc or ring room a quarter of the way around, or have a corner room
+ * continue along its other wall. A circle or a whole ring looks the same however it is
+ * turned.
  */
 function rotateSelectedRoom(sel, pos) {
     if (pos.roomShape === 'circle') return;
@@ -401,7 +403,9 @@ function rotateSelectedRoom(sel, pos) {
     const canvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
     const entries = getLinkedEntries(sel.componentIndex, pos);
     const floors = entries.map(e => e.floor);
-    const turned = pos.roomShape === 'ring' ? turnRingRoom(pos, Math.PI / 2) : turnArcRoom(pos, Math.PI / 2);
+    let turned;
+    if (pos.roomShape === 'corner') turned = switchCornerRoomWall(pos, floors);
+    else turned = pos.roomShape === 'ring' ? turnRingRoom(pos, Math.PI / 2) : turnArcRoom(pos, Math.PI / 2);
     if (!canvas || !commitRoomMove(sel, turned, entries, floors, canvas)) return;
 
     sel.length = pos.length;
