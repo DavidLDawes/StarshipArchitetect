@@ -19,9 +19,7 @@
  */
 function handleCanvasPlacement(event, floorIndex) {
     // Don't handle click if we just completed a resize
-    if (resizeState && resizeState.isResizing) {
-        return;
-    }
+    if (consumeResizeClick()) return;
 
     // Picking a free region to fill with a multi-quantity component
     if (uiState.regionFill) {

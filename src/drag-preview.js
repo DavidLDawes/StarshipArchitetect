@@ -138,8 +138,8 @@ function handleCanvasMouseMove(event, floorIndex) {
         return;
     }
 
-    // Only show preview during placement or move mode
-    if (!uiState.isPlacingComponent && !uiState.selectedPlacement) {
+    // Only show preview during placement or move mode. A resize draws its own.
+    if (resizeState.isResizing || (!uiState.isPlacingComponent && !uiState.selectedPlacement)) {
         clearPreview();
         return;
     }
