@@ -304,6 +304,9 @@ function drawFloorWithComponents(canvas, floorIndex, length, width, placements =
         drawPlacedRoom(ctx, pos, component, pixelsPerMeter, compIdx, firstItemNum, count);
     }
 
+    // Redraws would otherwise lose the highlight, on any floor the selection spans
+    if (selectedPlacement) drawSelectionOnFloor(canvas, selectedPlacement, floorIndex, pixelsPerMeter);
+
     updateFloorSpaceReadout(floorIndex);
 }
 

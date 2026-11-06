@@ -63,15 +63,8 @@ function handleComponentSelection(event, floorIndex) {
                 // Add visual feedback
                 canvas.classList.add('selection-mode');
 
-                // Redraw with selection highlight
-                drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
-                if (pos.roomShape) {
-                    drawRoomSelectionHighlight(canvas, pos, pixelsPerMeter);
-                } else if (isShape) {
-                    drawShapeSelectionHighlight(canvas, rects, pixelsPerMeter, floorIndex);
-                } else {
-                    drawSelectionHighlight(canvas, pos.x, pos.y, pLength, pWidth, pixelsPerMeter);
-                }
+                // Redraw with selection highlight, on every floor it spans
+                redrawFloors(getSelectedEntries(uiState.selectedPlacement).map(e => e.floor));
 
                 // Show instructions
                 showSelectionInstructions(isShape
@@ -80,6 +73,48 @@ function handleComponentSelection(event, floorIndex) {
 
                 return;
             }
+        }
+    }
+}
+
+/**
+ * Entries the selection acts on: all the floors of a component spanning floors
+ * @param {object} sel - uiState.selectedPlacement
+ * @returns {Array<object>} Placement entries, none if they are gone
+ */
+function getSelectedEntries(sel) {
+    const placement = shipData.componentPlacements[sel.componentIndex];
+    const pos = placement && placement.floors && placement.floors[sel.placementIndex];
+    return pos ? getLinkedEntries(sel.componentIndex, pos) : [];
+}
+
+/**
+ * Whether the selection has a part on a floor
+ * @param {object} sel - uiState.selectedPlacement
+ * @param {number} floorIndex - Floor number
+ * @returns {boolean}
+ */
+function isSelectionOnFloor(sel, floorIndex) {
+    return getSelectedEntries(sel).some(e => e.floor === floorIndex);
+}
+
+/**
+ * Draw the highlight for the part of a selection on one floor
+ * @param {HTMLCanvasElement} canvas - That floor's canvas
+ * @param {object} sel - uiState.selectedPlacement
+ * @param {number} floorIndex - Floor number
+ * @param {number} pixelsPerMeter - Canvas scale
+ */
+function drawSelectionOnFloor(canvas, sel, floorIndex, pixelsPerMeter) {
+    const placement = shipData.componentPlacements[sel.componentIndex];
+    for (const pos of getSelectedEntries(sel)) {
+        if (pos.floor !== floorIndex) continue;
+        if (pos.roomShape) {
+            drawRoomSelectionHighlight(canvas, pos, pixelsPerMeter);
+        } else if (pos.rects && pos.rects.length > 0) {
+            drawShapeSelectionHighlight(canvas, getPlacementRects(pos, placement), pixelsPerMeter, floorIndex);
+        } else {
+            drawSelectionHighlight(canvas, pos.x, pos.y, pos.length || placement.length, pos.width || placement.width, pixelsPerMeter);
         }
     }
 }
@@ -190,6 +225,7 @@ function cancelSelection() {
     if (!uiState.selectedPlacement) return;
 
     const sel = uiState.selectedPlacement;
+    const floors = getSelectedEntries(sel).map(e => e.floor);
     uiState.selectedPlacement = null;
 
     // Clear drag preview
@@ -197,11 +233,8 @@ function cancelSelection() {
 
     // Remove visual feedback and redraw
     const canvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
-    if (canvas) {
-        canvas.classList.remove('selection-mode');
-        const { floorWidth, floorLength } = getCurrentFloorDimensions();
-        drawFloorWithComponents(canvas, sel.floorIndex, floorLength, floorWidth, shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
-    }
+    if (canvas) canvas.classList.remove('selection-mode');
+    redrawFloors(floors.concat(sel.floorIndex));
 
     hideSelectionInstructions();
 }
@@ -354,9 +387,7 @@ function rotateSelectedRoom(sel, pos) {
     sel.originalX = pos.x;
     sel.originalY = pos.y;
 
-    const { floorLength } = getCurrentFloorDimensions();
     redrawFloors(floors);
-    drawRoomSelectionHighlight(canvas, pos, canvas.width / floorLength);
 }
 
 // ========================================
@@ -432,11 +463,6 @@ function rotateSelectedComponent() {
 
     // Redraw the floors
     redrawFloors(floors);
-    const canvas = document.getElementById(`floor-canvas-${sel.floorIndex}`);
-    if (canvas) {
-        const pixelsPerMeter = canvas.width / floorLength;
-        drawSelectionHighlight(canvas, newX, newY, newLength, newWidth, pixelsPerMeter);
-    }
 }
 
 // ========================================

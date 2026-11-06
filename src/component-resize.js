@@ -12,6 +12,7 @@
  */
 let resizeState = {
     isResizing: false,
+    justFinished: false, // The click that ends a drag is not a click on the floor
     edge: null, // 'top', 'bottom', 'left', 'right'
     componentIndex: null,
     placementIndex: null,
@@ -278,7 +279,10 @@ function updateResize(mouseX, mouseY, canvas) {
     // Throttle redraws using requestAnimationFrame
     if (resizeState.animationFrameId === null) {
         resizeState.animationFrameId = requestAnimationFrame(() => {
-            drawResizePreview(canvas, resizeState.floorIndex, floorLength, floorWidth);
+            for (const floor of resizeState.floors || []) {
+                const floorCanvas = document.getElementById(`floor-canvas-${floor}`);
+                if (floorCanvas) drawResizePreview(floorCanvas, floor, floorLength, floorWidth);
+            }
             resizeState.animationFrameId = null;
         });
     }
@@ -286,16 +290,16 @@ function updateResize(mouseX, mouseY, canvas) {
 
 /**
  * Whether a resized rectangle is allowed where it is: inside the usable space,
- * clear of other components, and for weapons, vehicles, and launch bays still
- * touching the outer hull
+ * clear of everything but itself (other rooms of the same component count), and for
+ * weapons, vehicles, and launch bays still touching the outer hull
  * @returns {boolean}
  */
 function isResizeValid(x, y, length, width) {
     const { floorLength, floorWidth } = getCurrentFloorDimensions();
     const armor = shipData.armorThickness || 0;
-    const { floors } = resizeState;
-    if (!fitsFloor(floors, x, y, length, width, floorLength, floorWidth, armor)) return false;
-    if (floors.some(f => checkOverlap(f, x, y, length, width, resizeState.componentIndex))) return false;
+    const { floors, entries, componentIndex } = resizeState;
+    const placement = shipData.componentPlacements[componentIndex];
+    if (!canPlaceOnFloors(placement, entries, floors, x, y, length, width, floorLength, floorWidth, armor)) return false;
     return !requiresHullAccess(shipData.components[resizeState.componentIndex]) ||
         touchesFloorHull(floors, x, y, length, width, floorLength, floorWidth, armor);
 }
@@ -368,23 +372,10 @@ function commitResize() {
         }
     }
 
-    // Redraw floors with selection highlight (keep component selected)
-    redrawFloors(resizeState.floors);
-    const canvas = document.getElementById(`floor-canvas-${resizeState.floorIndex}`);
-    if (canvas) {
-
-        // Draw selection highlight if component is still selected
-        if (uiState.selectedPlacement &&
-            uiState.selectedPlacement.componentIndex === resizeState.componentIndex &&
-            uiState.selectedPlacement.placementIndex === resizeState.placementIndex) {
-            const pixelsPerMeter = canvas.width / floorLength;
-            const pos = shipData.componentPlacements[resizeState.componentIndex].floors[resizeState.placementIndex];
-            drawSelectionHighlight(canvas, pos.x, pos.y, pos.length, pos.width, pixelsPerMeter);
-        }
-    }
-
-    // Clean up resize state
+    // Redraw its floors, which keeps it selected
+    const floors = resizeState.floors;
     resetResizeState();
+    redrawFloors(floors);
 }
 
 /**
@@ -393,15 +384,11 @@ function commitResize() {
 function cancelResize() {
     if (!resizeState.isResizing) return;
 
-    // Redraw floor without preview
-    const canvas = document.getElementById(`floor-canvas-${resizeState.floorIndex}`);
-    if (canvas) {
-        const { floorLength, floorWidth } = getCurrentFloorDimensions();
-        drawFloorWithComponents(canvas, resizeState.floorIndex, floorLength, floorWidth,
-            shipData.componentPlacements, shipData.components, uiState.selectedPlacement);
-    }
-
+    // Redraw its floors without the preview
+    const floors = resizeState.floors;
     resetResizeState();
+    resizeState.justFinished = true;
+    redrawFloors(floors);
 }
 
 /**
@@ -448,7 +435,7 @@ function resetResizeState() {
  * @param {number} floorWidth - Floor width
  */
 function drawResizePreview(canvas, floorIndex, floorLength, floorWidth) {
-    // First redraw floor with all components
+    // First redraw floor with all components, but no selection highlight
     drawFloorWithComponents(canvas, floorIndex, floorLength, floorWidth,
         shipData.componentPlacements, shipData.components, null);
 
@@ -512,10 +499,13 @@ function drawResizePreview(canvas, floorIndex, floorLength, floorWidth) {
  */
 function handleResizeMouseMove(event, floorIndex) {
     const sel = uiState.selectedPlacement;
-    if (!sel || sel.floorIndex !== floorIndex) {
+    if (!sel || !isSelectionOnFloor(sel, floorIndex)) {
         document.body.style.cursor = 'default';
         return;
     }
+
+    // The drag is measured on the canvas it started on
+    if (resizeState.isResizing && floorIndex !== resizeState.floorIndex) return;
 
     const canvas = event.target;
     const rect = canvas.getBoundingClientRect();
@@ -557,7 +547,7 @@ function handleResizeMouseMove(event, floorIndex) {
  */
 function handleResizeMouseDown(event, floorIndex) {
     const sel = uiState.selectedPlacement;
-    if (!sel || sel.floorIndex !== floorIndex || resizeState.isResizing) return;
+    if (!sel || !isSelectionOnFloor(sel, floorIndex) || resizeState.isResizing) return;
 
     const canvas = event.target;
     const rect = canvas.getBoundingClientRect();
@@ -600,7 +590,19 @@ function handleResizeMouseUp(event) {
         event.preventDefault();
         event.stopPropagation();
         commitResize();
+        resizeState.justFinished = true;
     }
+}
+
+/**
+ * Whether a click on the floor is just the end of a resize drag, or of one cancelled
+ * during the drag. Letting it through would move what was just resized.
+ * @returns {boolean} True if the click should be ignored
+ */
+function consumeResizeClick() {
+    const ignore = resizeState.isResizing || resizeState.justFinished;
+    resizeState.justFinished = false;
+    return ignore;
 }
 
 // ========================================
@@ -674,6 +676,8 @@ function setupResizeHandlers(canvas, floorIndex) {
  */
 function setupGlobalResizeHandlers() {
     document.addEventListener('mouseup', handleResizeMouseUp);
+    // A drag that ended off the canvas never gets its click, so don't wait for it
+    document.addEventListener('mousedown', () => { resizeState.justFinished = false; }, true);
 }
 
 // Initialize global handlers
@@ -683,5 +687,5 @@ if (typeof document !== 'undefined') {
 
 // CommonJS export for Jest (no-op in browsers where `module` is undefined)
 if (typeof module !== 'undefined') {
-    module.exports = { calculateNewDimensions };
+    module.exports = { calculateNewDimensions, resizeState, consumeResizeClick, isResizeValid };
 }
